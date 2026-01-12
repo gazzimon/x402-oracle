@@ -1,0 +1,8 @@
+[alias]
+xtask = "run --package xtask --"
+compile = "run --package xtask -- compile"
+deploy = "run --package xtask -- deploy"
+install-tools = "run --package xtask -- install-tools"
+post-dr = "run --package xtask -- post-dr"
+test-op = "run --package xtask -- test-op"
+test-all-ops = "run --package xtask -- test-all-ops"

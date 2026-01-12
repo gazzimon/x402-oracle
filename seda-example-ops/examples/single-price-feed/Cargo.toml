@@ -1,0 +1,21 @@
+[package]
+name = "single-price-feed"
+version = "0.1.0"
+edition = "2024"
+# rust-version = ""
+
+[features]
+default = ["env-testnet"]
+seda-hide = ["seda-sdk-rs/hide-panic-paths"]
+env-testnet = ["testnet", "seda-hide"]
+env-mainnet = ["mainnet", "seda-hide"]
+test = ["testnet"]
+
+testnet = []
+mainnet = []
+
+[dependencies]
+anyhow = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+seda-sdk-rs = { version = "1.1", default-features = false }
+ethabi = "18.0"

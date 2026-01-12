@@ -1,0 +1,32 @@
+{
+  "name": "seda-starter-kit",
+  "version": "1.0.0",
+  "description": "Starter kit for building and deploying SEDA oracle data requests with EVM integration",
+  "type": "module",
+  "scripts": {
+    "build": "make build",
+    "deploy": "bun run build && bunx seda-sdk oracle-program upload ./target/wasm32-wasip1/release-wasm/oracle-program.wasm",
+    "post-dr": "bun run ./scripts/post-dr.ts",
+    "test": "bun test tests/ src/ --ignore='integrations/evm-foundry/lib/**'"
+  },
+  "keywords": [
+    "seda",
+    "blockchain",
+    "oracle",
+    "data-request",
+    "wasm",
+    "ethereum",
+    "evm"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@seda-protocol/dev-tools": "^1.0.3",
+    "@types/bun": "^1.2.22",
+    "bignumber.js": "^9.3.1",
+    "binaryen": "^124.0.0",
+    "wabt": "^1.0.37"
+  },
+  "dependencies": {
+    "@seda-protocol/vm": "^1.1.0"
+  }
+}

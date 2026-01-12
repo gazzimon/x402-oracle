@@ -1,0 +1,19 @@
+{
+	"status": "OK",
+	"Quote": {
+		"EUR/USD": {
+			"eventSymbol": "EUR/USD",
+			"eventTime": 0,
+			"sequence": 0,
+			"timeNanoPart": 0,
+			"bidTime": 1757454455000,
+			"bidExchangeCode": "",
+			"bidPrice": 1.17096,
+			"bidSize": 1,
+			"askTime": 1757454455000,
+			"askExchangeCode": "",
+			"askPrice": 1.17109,
+			"askSize": 1
+		}
+	}
+}

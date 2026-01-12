@@ -1,0 +1,66 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.1.2/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedVariables": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn"
+      },
+      "style": {
+        "useConst": "error",
+        "useTemplate": "error"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "includes": ["**"]
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always"
+    }
+  },
+  "json": {
+    "parser": {
+      "allowComments": true
+    }
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/.coverage_artifacts",
+      "!**/.coverage_cache",
+      "!**/.coverage_contracts",
+      "!**/artifacts",
+      "!**/build",
+      "!**/cache",
+      "!**/coverage",
+      "!**/dist",
+      "!**/deployments",
+      "!**/node_modules",
+      "!**/types",
+      "!**/typechain-types",
+      "!**/*.env",
+      "!**/*.log",
+      "!**/.DS_Store",
+      "!**/.pnp.*",
+      "!**/bun.lockb",
+      "!**/coverage.json",
+      "!**/package-lock.json",
+      "!**/pnpm-lock.yaml",
+      "!**/yarn.lock",
+      "!**/test-vectors.json"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+[submodule "integrations/evm-foundry/lib/forge-std"]
+	path = integrations/evm-foundry/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "integrations/evm-foundry/lib/openzeppelin-contracts"]
+	path = integrations/evm-foundry/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
+[submodule "integrations/evm-foundry/lib/seda-evm-contracts"]
+	path = integrations/evm-foundry/lib/seda-evm-contracts
+	url = https://github.com/sedaprotocol/seda-evm-contracts
