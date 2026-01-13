@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -236,17 +237,34 @@ fn main() {
 
 /// The main function that executes the command-line interface for managing SEDA oracle programs.
 fn try_main() -> Result<()> {
-    // Ensure our working directory is the toplevel
+    // Ensure our working directory is the SEDA workspace root.
     {
-        let toplevel_path = Command::new("git")
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").with_context(|| "Reading CARGO_MANIFEST_DIR")?;
+        let workspace_dir = Path::new(&manifest_dir)
+            .parent()
+            .with_context(|| "Locating workspace directory")?;
+
+        let git_root = Command::new("git")
             .args(["rev-parse", "--show-toplevel"])
             .output()
-            .with_context(|| "Invoking git rev-parse")?;
-        if !toplevel_path.status.success() {
-            bail!("Failed to invoke git rev-parse");
-        }
-        let path = String::from_utf8(toplevel_path.stdout)?;
-        std::env::set_current_dir(path.trim()).with_context(|| "Changing to toplevel")?;
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    String::from_utf8(output.stdout)
+                        .ok()
+                        .map(|path| PathBuf::from(path.trim()))
+                } else {
+                    None
+                }
+            });
+
+        let target_dir = git_root
+            .filter(|root| root.join("Cargo.toml").exists())
+            .unwrap_or_else(|| workspace_dir.to_path_buf());
+
+        std::env::set_current_dir(&target_dir)
+            .with_context(|| format!("Changing to {}", target_dir.display()))?;
     }
 
     dotenvy::dotenv().ok();
@@ -322,12 +340,27 @@ fn compile_op(
         )
         .run()?;
     };
+    let wasm_strip_cmd = std::env::var("WASM_STRIP").unwrap_or_else(|_| "wasm-strip".to_string());
+    let wasm_opt_cmd = std::env::var("WASM_OPT").unwrap_or_else(|_| "wasm-opt".to_string());
+
     cmd!(
         sh,
-        "wasm-strip target/wasm32-wasip1/release/{program_name}.wasm"
+        "{wasm_strip_cmd} target/wasm32-wasip1/release/{program_name}.wasm"
     )
     .run()?;
-    cmd!(sh, "wasm-opt -Oz --enable-bulk-memory --enable-sign-ext target/wasm32-wasip1/release/{program_name}.wasm -o target/wasm32-wasip1/release/{program_name}.wasm").run()?;
+
+    cmd!(sh, "{wasm_opt_cmd}")
+        .arg("-Oz")
+        .arg("--enable-bulk-memory")
+        .arg("--enable-sign-ext")
+        .arg(format!(
+            "target/wasm32-wasip1/release/{program_name}.wasm"
+        ))
+        .arg("-o")
+        .arg(format!(
+            "target/wasm32-wasip1/release/{program_name}.wasm"
+        ))
+        .run()?;
     Ok(())
 }
 
