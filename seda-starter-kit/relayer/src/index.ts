@@ -8,6 +8,8 @@ type ExplorerRequest = {
   requestId?: string;
   execProgramId?: string;
   execInputs?: string;
+  drBlockHeight?: number;
+  blockHeight?: number;
   result?: { result?: string; exitCode?: number; consensus?: boolean } | string;
   exitCode?: number;
   consensus?: boolean;
@@ -23,6 +25,19 @@ const DR_LIMIT = parseInt(process.env.DR_LIMIT ?? '50', 10);
 
 const STATE_PATH = path.join(process.cwd(), '.relayer-state.json');
 
+type RelayerState = {
+  processed: Record<string, boolean>;
+  lastByPair?: Record<
+    string,
+    {
+      requestId: string;
+      drBlockHeight?: number;
+      txHash?: string;
+      updatedAt?: string;
+    }
+  >;
+};
+
 function getArgValue(flag: string): string | null {
   const index = process.argv.indexOf(flag);
   if (index === -1) return null;
@@ -37,6 +52,8 @@ const DR_ID = process.env.DR_ID ?? getArgValue('--dr-id') ?? '';
 const DR_RESULT = process.env.DR_RESULT ?? getArgValue('--dr-result') ?? '';
 const DR_PAIR = process.env.DR_PAIR ?? getArgValue('--pair') ?? '';
 const DR_EXEC_INPUTS = process.env.DR_EXEC_INPUTS ?? getArgValue('--exec-inputs') ?? '';
+const DR_BLOCK_HEIGHT_RAW = process.env.DR_BLOCK_HEIGHT ?? getArgValue('--dr-block-height') ?? '';
+const DR_BLOCK_HEIGHT = DR_BLOCK_HEIGHT_RAW ? parseInt(DR_BLOCK_HEIGHT_RAW, 10) : undefined;
 const ONESHOT =
   process.env.ONESHOT === 'true' || hasArg('--once') || Boolean(DR_ID) || Boolean(DR_RESULT);
 
@@ -44,7 +61,7 @@ const consumerAbi = [
   'function submitResult(bytes32 requestId, bytes32 pair, uint256 value, bytes sedaProof)',
 ];
 
-function loadState(): { processed: Record<string, boolean> } {
+function loadState(): RelayerState {
   if (!fs.existsSync(STATE_PATH)) {
     return { processed: {} };
   }
@@ -55,7 +72,7 @@ function loadState(): { processed: Record<string, boolean> } {
   }
 }
 
-function saveState(state: { processed: Record<string, boolean> }) {
+function saveState(state: RelayerState) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
 }
 
@@ -95,6 +112,10 @@ function extractResult(req: ExplorerRequest): { result?: string; exitCode?: numb
 function normalizeHex(value: string): string {
   if (!value) return value;
   return value.startsWith('0x') ? value : `0x${value}`;
+}
+
+function stripHexPrefix(value: string): string {
+  return value.startsWith('0x') ? value.slice(2) : value;
 }
 
 async function fetchRequests(): Promise<ExplorerRequest[]> {
@@ -157,6 +178,15 @@ async function main() {
     await tx.wait();
 
     state.processed[requestId] = true;
+    const drBlockHeight = req.drBlockHeight ?? req.blockHeight ?? DR_BLOCK_HEIGHT;
+    const requestIdPlain = stripHexPrefix(requestId);
+    state.lastByPair = state.lastByPair ?? {};
+    state.lastByPair[pair] = {
+      requestId: requestIdPlain,
+      drBlockHeight,
+      txHash: tx.hash,
+      updatedAt: new Date().toISOString(),
+    };
     saveState(state);
     return true;
   };
@@ -182,6 +212,7 @@ async function main() {
       drId: DR_ID,
       execProgramId: ORACLE_PROGRAM_ID,
       execInputs: DR_EXEC_INPUTS || undefined,
+      drBlockHeight: DR_BLOCK_HEIGHT,
       result: DR_RESULT,
       exitCode: 0,
       consensus: true

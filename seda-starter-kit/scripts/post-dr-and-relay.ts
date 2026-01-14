@@ -71,6 +71,8 @@ async function main() {
       '--',
       '--dr-id',
       result.drId,
+      '--dr-block-height',
+      result.drBlockHeight?.toString() ?? '',
       '--dr-result',
       result.result,
       '--pair',
