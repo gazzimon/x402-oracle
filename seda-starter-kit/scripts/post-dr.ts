@@ -1,6 +1,8 @@
 import { PostDataRequestInput, Signer, buildSigningConfig, postAndAwaitDataRequest } from '@seda-protocol/dev-tools';
+import dotenv from 'dotenv';
 
 async function main() {
+    dotenv.config();
     if (!process.env.ORACLE_PROGRAM_ID) {
         throw new Error('Please set the ORACLE_PROGRAM_ID in your env file');
     }
@@ -11,14 +13,16 @@ async function main() {
 
     console.log('Posting and waiting for a result, this may take a little while..');
 
+    const execInputs = process.env.EXEC_INPUTS ?? process.env.CRONOS_RPC_URL ?? '';
     const dataRequestInput: PostDataRequestInput = {
         consensusOptions: {
             method: 'none'
         },
         execProgramId: process.env.ORACLE_PROGRAM_ID,
-        execInputs: Buffer.from('eth-usdc'),
+        execInputs: Buffer.from(execInputs),
         tallyInputs: Buffer.from([]),
         memo: Buffer.from(new Date().toISOString()),
+        replicationFactor: 1,
     };
 
     const result = await postAndAwaitDataRequest(signer, dataRequestInput, {});
@@ -29,6 +33,19 @@ async function main() {
         blockTimestamp: result.blockTimestamp ? result.blockTimestamp.toISOString() : '',
         explorerLink
     });
+
+    if (result.exitCode === 0) {
+        const raw = result.result?.startsWith('0x') ? result.result : `0x${result.result}`;
+        try {
+            const value = BigInt(raw);
+            const scale = 100000000n;
+            const integer = value / scale;
+            const fraction = (value % scale).toString().padStart(8, '0');
+            console.log(`WCRO/USD (8 decimals): ${integer.toString()}.${fraction}`);
+        } catch (error) {
+            console.warn('Could not parse result as uint256:', error);
+        }
+    }
 }
 
 main();

@@ -13,9 +13,9 @@ check:
 	cargo clippy --all-features --locked -- -D warnings
 
 build:
-	cargo build --target wasm32-wasip1 --profile release-wasm
-	wasm-strip target/wasm32-wasip1/release-wasm/oracle-program.wasm;
-	wasm-opt -Oz --enable-bulk-memory target/wasm32-wasip1/release-wasm/oracle-program.wasm -o target/wasm32-wasip1/release-wasm/oracle-program.wasm;
+	cargo build --manifest-path oracle-program/Cargo.toml --target wasm32-wasip1 --profile release-wasm
+	wasm-strip oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm;
+	wasm-opt -Oz --enable-bulk-memory oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm -o oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm;
 
 install-tools:
 	bun install
