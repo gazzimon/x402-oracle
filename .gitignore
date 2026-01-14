@@ -115,3 +115,9 @@ files/
 
 # sops
 **/**.dec.yaml
+
+# Rust / Cargo build artifacts
+**/target/
+
+# WASM build outputs
+**/*.wasm
