@@ -13,7 +13,13 @@ async function main() {
 
     console.log('Posting and waiting for a result, this may take a little while..');
 
-    const execInputs = process.env.EXEC_INPUTS ?? process.env.CRONOS_RPC_URL ?? '';
+    const execInputs = process.env.EXEC_INPUTS ?? '';
+    const execGasLimit = process.env.EXEC_GAS_LIMIT
+        ? parseInt(process.env.EXEC_GAS_LIMIT, 10)
+        : undefined;
+    const tallyGasLimit = process.env.TALLY_GAS_LIMIT
+        ? parseInt(process.env.TALLY_GAS_LIMIT, 10)
+        : undefined;
     const dataRequestInput: PostDataRequestInput = {
         consensusOptions: {
             method: 'none'
@@ -23,6 +29,8 @@ async function main() {
         tallyInputs: Buffer.from([]),
         memo: Buffer.from(new Date().toISOString()),
         replicationFactor: 1,
+        execGasLimit,
+        tallyGasLimit,
     };
 
     const result = await postAndAwaitDataRequest(signer, dataRequestInput, {});
@@ -41,7 +49,7 @@ async function main() {
             const scale = 100000000n;
             const integer = value / scale;
             const fraction = (value % scale).toString().padStart(8, '0');
-            console.log(`WCRO/USD (8 decimals): ${integer.toString()}.${fraction}`);
+            console.log(`Price (8 decimals): ${integer.toString()}.${fraction}`);
         } catch (error) {
             console.warn('Could not parse result as uint256:', error);
         }
