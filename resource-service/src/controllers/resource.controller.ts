@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { HttpCode } from '../lib/interfaces/api.interface.js';
 import { ResourceService } from '../services/resource.service.js';
+import { OracleService } from '../services/oracle.service.js';
 
 /**
  * Express controller for resource-related endpoints.
@@ -19,6 +20,7 @@ export class ResourceController {
    * Service layer for resource operations and payment settlement.
    */
   private resourceService: ResourceService;
+  private oracleService: OracleService;
 
   /**
    * Creates a new {@link ResourceController}.
@@ -29,6 +31,7 @@ export class ResourceController {
    */
   constructor() {
     this.resourceService = new ResourceService();
+    this.oracleService = new OracleService();
   }
 
   /**
@@ -93,6 +96,36 @@ export class ResourceController {
       }
 
       return res.json(response);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /**
+   * GET `/api/price/:pair`
+   *
+   * Returns the latest on-chain price for a given pair.
+   */
+  public async getPrice(req: Request, res: Response, next: NextFunction): Promise<Response | void> {
+    try {
+      const pair = req.params.pair;
+      const result = await this.oracleService.getPrice(pair);
+      return res.status(HttpCode.Ok).json({ ok: true, ...result });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /**
+   * GET `/api/edge/:pair`
+   *
+   * Returns the arbitrage edge for a given pair.
+   */
+  public async getEdge(req: Request, res: Response, next: NextFunction): Promise<Response | void> {
+    try {
+      const pair = req.params.pair;
+      const result = await this.oracleService.getEdge(pair);
+      return res.status(HttpCode.Ok).json({ ok: true, ...result });
     } catch (e) {
       next(e);
     }

@@ -30,6 +30,28 @@ const controller = new ResourceController();
 router.get('/data', requirePaidAccess({ description: 'Unlock /api/data' }), controller.getSecret.bind(controller));
 
 /**
+ * GET `/api/price/:pair`
+ *
+ * Protected endpoint that returns the latest price for a pair.
+ */
+router.get(
+  '/price/:pair',
+  requirePaidAccess({ description: 'Unlock /api/price' }),
+  controller.getPrice.bind(controller),
+);
+
+/**
+ * GET `/api/edge/:pair`
+ *
+ * Protected endpoint that returns the latest arbitrage edge for a pair.
+ */
+router.get(
+  '/edge/:pair',
+  requirePaidAccess({ description: 'Unlock /api/edge' }),
+  controller.getEdge.bind(controller),
+);
+
+/**
  * POST `/api/pay`
  *
  * Settlement endpoint used to verify and settle an X402 payment.

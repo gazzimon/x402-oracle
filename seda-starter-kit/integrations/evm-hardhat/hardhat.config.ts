@@ -15,6 +15,11 @@ const config: HardhatUserConfig = {
       url: 'https://mainnet.base.org',
       chainId: 8453,
     },
+      cronosTestnet: {
+      url: process.env.RPC_URL || "https://cronos-testnet-3.crypto.org:8545",
+      chainId: 338,
+      accounts: process.env.EVM_PRIVATE_KEY ? [process.env.EVM_PRIVATE_KEY] : [],
+    },
     baseSepolia: {
       accounts: process.env.EVM_PRIVATE_KEY ? [process.env.EVM_PRIVATE_KEY] : [],
       url: 'https://sepolia.base.org',

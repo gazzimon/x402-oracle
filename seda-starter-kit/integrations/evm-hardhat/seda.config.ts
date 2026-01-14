@@ -11,6 +11,9 @@ export const networkConfigs: { [network: string]: SedaConfig } = {
   baseSepolia: {
     coreAddress: '0xffDB1d9bBE4D56780143428450c4C2058061E6F3',
   },
+    cronosTestnet: {
+    coreAddress: '0xffDB1d9bBE4D56780143428450c4C2058061E6F3',
+  },
   superseedSepolia: {
     coreAddress: '0xE08989FB730E072689b4885c2a62AE5f1fc787F2',
   },
