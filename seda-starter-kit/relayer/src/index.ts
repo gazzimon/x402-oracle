@@ -13,7 +13,7 @@ type ExplorerRequest = {
   consensus?: boolean;
 };
 
-const SEDA_API_URL = process.env.SEDA_API_URL ?? 'https://testnet.explorer.seda.xyz/data-requests';
+const SEDA_API_URL = process.env.SEDA_API_URL ?? 'https://testnet.explorer.seda.xyz/api/data-requests';
 const ORACLE_PROGRAM_ID = (process.env.ORACLE_PROGRAM_ID ?? '').toLowerCase();
 const CRONOS_RPC_URL = process.env.CRONOS_RPC_URL ?? '';
 const CONSUMER_ADDRESS = process.env.CONSUMER_ADDRESS ?? '';
@@ -22,6 +22,23 @@ const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? '15000', 10);
 const DR_LIMIT = parseInt(process.env.DR_LIMIT ?? '50', 10);
 
 const STATE_PATH = path.join(process.cwd(), '.relayer-state.json');
+
+function getArgValue(flag: string): string | null {
+  const index = process.argv.indexOf(flag);
+  if (index === -1) return null;
+  return process.argv[index + 1] ?? null;
+}
+
+function hasArg(flag: string): boolean {
+  return process.argv.includes(flag);
+}
+
+const DR_ID = process.env.DR_ID ?? getArgValue('--dr-id') ?? '';
+const DR_RESULT = process.env.DR_RESULT ?? getArgValue('--dr-result') ?? '';
+const DR_PAIR = process.env.DR_PAIR ?? getArgValue('--pair') ?? '';
+const DR_EXEC_INPUTS = process.env.DR_EXEC_INPUTS ?? getArgValue('--exec-inputs') ?? '';
+const ONESHOT =
+  process.env.ONESHOT === 'true' || hasArg('--once') || Boolean(DR_ID) || Boolean(DR_RESULT);
 
 const consumerAbi = [
   'function submitResult(bytes32 requestId, bytes32 pair, uint256 value, bytes sedaProof)',
@@ -75,16 +92,33 @@ function extractResult(req: ExplorerRequest): { result?: string; exitCode?: numb
   return {};
 }
 
+function normalizeHex(value: string): string {
+  if (!value) return value;
+  return value.startsWith('0x') ? value : `0x${value}`;
+}
+
 async function fetchRequests(): Promise<ExplorerRequest[]> {
   const url = new URL(SEDA_API_URL);
   if (!url.searchParams.has('limit')) {
     url.searchParams.set('limit', String(DR_LIMIT));
   }
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json'
+    }
+  });
   if (!response.ok) {
     throw new Error(`Explorer fetch failed: ${response.status}`);
   }
-  const payload = await response.json();
+  const contentType = response.headers.get('content-type') ?? '';
+  const text = await response.text();
+  if (!contentType.includes('application/json')) {
+    const snippet = text.slice(0, 120).replace(/\s+/g, ' ');
+    throw new Error(
+      `Explorer returned non-JSON response. Check SEDA_API_URL (expected /api/data-requests). Body: ${snippet}`,
+    );
+  }
+  const payload = JSON.parse(text);
   return normalizeRequests(payload);
 }
 
@@ -94,39 +128,81 @@ async function main() {
   }
 
   const provider = new ethers.JsonRpcProvider(CRONOS_RPC_URL);
-  const wallet = new ethers.Wallet(RELAYER_PRIVATE_KEY, provider);
+  const wallet = new ethers.Wallet(normalizeHex(RELAYER_PRIVATE_KEY), provider);
   const consumer = new ethers.Contract(CONSUMER_ADDRESS, consumerAbi, wallet);
   const coder = ethers.AbiCoder.defaultAbiCoder();
-  const proof = coder.encode(['bytes32'], [ORACLE_PROGRAM_ID]);
+  const proof = coder.encode(['bytes32'], [normalizeHex(ORACLE_PROGRAM_ID)]);
 
   const state = loadState();
 
+  const relayRequest = async (req: ExplorerRequest) => {
+    const requestId = req.drId ?? req.requestId;
+    const execProgramId = (req.execProgramId ?? '').toLowerCase();
+    if (!requestId || execProgramId !== ORACLE_PROGRAM_ID) return false;
+    if (DR_ID && requestId !== DR_ID) return false;
+    if (state.processed[requestId]) return false;
+
+    const { result, exitCode, consensus } = extractResult(req);
+    if (!result || exitCode !== 0 || consensus !== true) return false;
+
+    const pair = DR_PAIR || decodeExecInputs(req.execInputs) || 'WCRO-USDC';
+    const pairHash = ethers.keccak256(ethers.toUtf8Bytes(pair));
+
+    const value = BigInt(result.startsWith('0x') ? result : `0x${result}`);
+    console.log(`Relaying ${pair} (${requestId}) = ${value.toString()}`);
+
+    const requestIdHex = normalizeHex(requestId);
+    const tx = await consumer.submitResult(requestIdHex, pairHash, value, proof);
+    console.log(`Submitted tx: ${tx.hash}`);
+    await tx.wait();
+
+    state.processed[requestId] = true;
+    saveState(state);
+    return true;
+  };
+
   const tick = async () => {
     const requests = await fetchRequests();
+    let matched = false;
+    let relayed = 0;
     for (const req of requests) {
       const requestId = req.drId ?? req.requestId;
       const execProgramId = (req.execProgramId ?? '').toLowerCase();
       if (!requestId || execProgramId !== ORACLE_PROGRAM_ID) continue;
-      if (state.processed[requestId]) continue;
-
-      const { result, exitCode, consensus } = extractResult(req);
-      if (!result || exitCode !== 0 || consensus !== true) continue;
-
-      const pair = decodeExecInputs(req.execInputs) ?? 'WCRO-USDC';
-      const pairHash = ethers.keccak256(ethers.toUtf8Bytes(pair));
-
-      const value = BigInt(result.startsWith('0x') ? result : `0x${result}`);
-      console.log(`Relaying ${pair} (${requestId}) = ${value.toString()}`);
-
-      const tx = await consumer.submitResult(requestId, pairHash, value, proof);
-      await tx.wait();
-
-      state.processed[requestId] = true;
-      saveState(state);
+      if (DR_ID && requestId !== DR_ID) continue;
+      matched = true;
+      const didRelay = await relayRequest(req);
+      if (didRelay) relayed += 1;
     }
+    return { matched, relayed };
   };
 
-  await tick();
+  if (DR_ID && DR_RESULT) {
+    const request: ExplorerRequest = {
+      drId: DR_ID,
+      execProgramId: ORACLE_PROGRAM_ID,
+      execInputs: DR_EXEC_INPUTS || undefined,
+      result: DR_RESULT,
+      exitCode: 0,
+      consensus: true
+    };
+    const didRelay = await relayRequest(request);
+    if (!didRelay) {
+      throw new Error(`DR_ID provided but not relayed: ${DR_ID}`);
+    }
+    return;
+  }
+
+  const { matched, relayed } = await tick();
+  if (ONESHOT) {
+    if (!matched) {
+      throw new Error(`DR_ID not found in explorer response: ${DR_ID}`);
+    }
+    if (relayed === 0) {
+      throw new Error(`DR_ID found but not relayed yet: ${DR_ID}`);
+    }
+    return;
+  }
   setInterval(() => tick().catch((err) => console.error(err)), POLL_INTERVAL_MS);
 }
 
