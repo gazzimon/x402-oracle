@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { ethers } from 'ethers';
 import { Facilitator, CronosNetwork, PaymentRequirements } from '@crypto.com/facilitator-client';
 import { handleX402Payment } from '../lib/middlewares/require.middleware.js';
@@ -11,6 +12,8 @@ const SEDA_EXPLORER_BASE = process.env.SEDA_EXPLORER_BASE ?? 'https://testnet.ex
 const RELAYER_STATE_PATH =
   process.env.RELAYER_STATE_PATH ??
   path.resolve(process.cwd(), '../../seda-starter-kit/relayer/.relayer-state.json');
+const SEDA_STARTER_KIT_PATH =
+  process.env.SEDA_STARTER_KIT_PATH ?? path.resolve(process.cwd(), '../../seda-starter-kit');
 
 const consumerAbi = [
   'function prices(bytes32) view returns (uint256)',
@@ -36,6 +39,41 @@ function loadRelayerState(): RelayerState {
   } catch {
     return {};
   }
+}
+
+function extractPairFromRequirements(paymentRequirements: PaymentRequirements): string | null {
+  const resource = (paymentRequirements as { resource?: string }).resource;
+  if (!resource) return null;
+  try {
+    const url = new URL(resource, 'http://localhost');
+    const pair = url.searchParams.get('pair');
+    return pair ? pair.toUpperCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function runPostDrRelay(pair: string): Promise<void> {
+  const env = { ...process.env, EXEC_INPUTS: JSON.stringify({ pair }) };
+  return new Promise((resolve, reject) => {
+    console.info('[x402] post-dr-relay start', {
+      pair,
+      cwd: SEDA_STARTER_KIT_PATH,
+      execInputs: env.EXEC_INPUTS,
+      relayerStatePath: RELAYER_STATE_PATH,
+    });
+    const proc = spawn('bun', ['run', 'post-dr-relay'], {
+      cwd: SEDA_STARTER_KIT_PATH,
+      env,
+      stdio: 'inherit',
+    });
+    proc.on('error', reject);
+    proc.on('exit', (code) => {
+      console.info('[x402] post-dr-relay exit', { pair, code });
+      if (code === 0) resolve();
+      else reject(new Error(`post-dr-relay failed with exit code ${code ?? 'unknown'}`));
+    });
+  });
 }
 
 function formatScaled(value: bigint, decimals: number): string {
@@ -137,11 +175,24 @@ export class ResourceService {
    * @throws Re-throws any error raised by the underlying settlement helper or SDK.
    */
   async settlePayment(params: { paymentId: string; paymentHeader: string; paymentRequirements: PaymentRequirements }) {
-    return handleX402Payment({
+    console.info('[x402] settlePayment start', {
+      paymentId: params.paymentId,
+      resource: (params.paymentRequirements as { resource?: string }).resource,
+    });
+    const result = await handleX402Payment({
       facilitator: this.facilitator,
       paymentId: params.paymentId,
       paymentHeader: params.paymentHeader,
       paymentRequirements: params.paymentRequirements,
     });
+    console.info('[x402] settlePayment result', { ok: result.ok, paymentId: params.paymentId });
+    if (result.ok) {
+      const pair = extractPairFromRequirements(params.paymentRequirements);
+      console.info('[x402] derived pair', { pair });
+      if (pair) {
+        await runPostDrRelay(pair);
+      }
+    }
+    return result;
   }
 }
