@@ -157,7 +157,7 @@ export const ButtonRow = styled.div`
   gap: 12px;
 `;
 
-export const PrimaryButton = styled.button`
+export const PrimaryButton = styled.button<{ disabled?: boolean }>`
   flex: 1;
   min-width: 200px;
   padding: 12px 18px;
@@ -169,6 +169,12 @@ export const PrimaryButton = styled.button`
   letter-spacing: 0.02em;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
+  }
 
   &:hover {
     transform: translateY(-1px);

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Facilitator } from '@crypto.com/facilitator-client';
 import { createApiClient } from '../integration/api';
 import type { PaymentChallenge } from '../integration/api.interfaces';
@@ -35,6 +35,9 @@ export interface UseX402FlowResult {
 
   /** Payment identifier associated with the last successful settlement. */
   paymentId: string;
+
+  /** Indicates the flow is busy (requesting, paying, or waiting). */
+  isBusy: boolean;
 
   /**
    * Requests the protected resource.
@@ -78,6 +81,33 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
   const [data, setData] = useState<string>('');
   const [paymentId, setPaymentId] = useState<string>('');
   const [lastPair, setLastPair] = useState<string>('');
+  const [isBusy, setIsBusy] = useState<boolean>(false);
+  const [lastPayloadKey, setLastPayloadKey] = useState<string>('');
+  const busyCount = useRef(0);
+
+  const setBusy = (delta: number) => {
+    busyCount.current += delta;
+    if (busyCount.current < 0) busyCount.current = 0;
+    setIsBusy(busyCount.current > 0);
+  };
+
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const getPayloadKey = (payload: unknown): string => {
+    if (!payload || typeof payload !== 'object') return '';
+    const obj = payload as Record<string, unknown>;
+    const keyParts = [
+      obj.pair,
+      obj.sedaRequestId,
+      obj.relayedAt,
+      obj.cronosTxHash,
+      obj.lastUpdate,
+    ]
+      .filter(Boolean)
+      .map(String);
+    if (keyParts.length) return keyParts.join('|');
+    return JSON.stringify(obj);
+  };
 
   /**
    * Handles an X402 payment challenge by guiding the user through wallet-based payment.
@@ -95,6 +125,8 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
    */
   const handlePaymentChallenge = useCallback(
     async (challenge: PaymentChallenge) => {
+      setBusy(1);
+      try {
       const accepts0 = challenge.accepts?.[0];
       if (!accepts0) throw new Error('Invalid x402 response: accepts[0] missing');
 
@@ -136,6 +168,9 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
       setStatus(`Payment settled. txHash=${payRes.data.txHash ?? '--'}`);
 
       await fetchSecret(lastPair, nextPaymentId);
+      } finally {
+        setBusy(-1);
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, lastPair]
@@ -150,30 +185,49 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
    */
   const fetchSecret = useCallback(
     async (pair: string, existingPaymentId?: string) => {
-      if (!pair) {
-        setStatus('Select a pair to continue.');
-        return;
+      setBusy(1);
+      try {
+        if (!pair) {
+          setStatus('Select a pair to continue.');
+          return;
+        }
+
+        setLastPair(pair);
+        setStatus(`Requesting /api/data?pair=${pair} ...`);
+        if (!existingPaymentId) {
+          setData('');
+        }
+
+        const maxRetries = 4;
+        let attempt = 0;
+        while (attempt <= maxRetries) {
+          const result = await api.getData(pair, existingPaymentId);
+
+          if (result.kind === 'ok') {
+            const payloadKey = getPayloadKey(result.data);
+            if (payloadKey && payloadKey === lastPayloadKey && attempt < maxRetries) {
+              setStatus('Waiting for consensus... (retrying)');
+              attempt += 1;
+              await wait(4000);
+              continue;
+            }
+            setData(JSON.stringify(result.data, null, 2));
+            setLastPayloadKey(payloadKey);
+            setStatus('Access granted');
+            break;
+          }
+
+          if (result.kind === 'payment_required') {
+            setStatus(`Payment required: ${result.challenge.error ?? 'payment_required'}`);
+            await handlePaymentChallenge(result.challenge);
+            break;
+          }
+
+          throw new Error(`Unexpected response: ${result.status} ${result.text}`);
+        }
+      } finally {
+        setBusy(-1);
       }
-
-      setLastPair(pair);
-      setStatus(`Requesting /api/data?pair=${pair} ...`);
-      setData('');
-
-      const result = await api.getData(pair, existingPaymentId);
-
-      if (result.kind === 'ok') {
-        setData(JSON.stringify(result.data, null, 2));
-        setStatus('Access granted');
-        return;
-      }
-
-      if (result.kind === 'payment_required') {
-        setStatus(`Payment required: ${result.challenge.error ?? 'payment_required'}`);
-        await handlePaymentChallenge(result.challenge);
-        return;
-      }
-
-      throw new Error(`Unexpected response: ${result.status} ${result.text}`);
     },
     [api, handlePaymentChallenge]
   );
@@ -188,5 +242,5 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
     await fetchSecret(lastPair, paymentId);
   }, [paymentId, lastPair, fetchSecret]);
 
-  return { status, data, paymentId, fetchSecret, retryWithPaymentId };
+  return { status, data, paymentId, isBusy, fetchSecret, retryWithPaymentId };
 }

@@ -38,7 +38,7 @@ export interface ResourceContainerProps {
 }
 
 export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
-  const { status, data, paymentId, fetchSecret, retryWithPaymentId } = useX402Flow({
+  const { status, data, paymentId, isBusy, fetchSecret, retryWithPaymentId } = useX402Flow({
     apiBase: props.apiBase,
   });
   const pairs = useMemo(
@@ -128,8 +128,10 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
           />
 
           <ButtonRow>
-            <PrimaryButton onClick={() => void fetchSecret(pair)}>Fetch Price</PrimaryButton>
-            <GhostButton onClick={() => void retryWithPaymentId()} disabled={!paymentId}>
+            <PrimaryButton onClick={() => void fetchSecret(pair)} disabled={isBusy}>
+              {isBusy ? 'Working...' : 'Fetch Price'}
+            </PrimaryButton>
+            <GhostButton onClick={() => void retryWithPaymentId()} disabled={!paymentId || isBusy}>
               Retry with paymentId
             </GhostButton>
           </ButtonRow>

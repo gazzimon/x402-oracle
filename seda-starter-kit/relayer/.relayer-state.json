@@ -11,26 +11,29 @@
     "f862b583ccea4ded25b49b4e676fcaa088ac4a097f13823314b143ab264739a0": true,
     "44472ea95d4b814c7848a9bf3b6b424c0718c578bdaf313bf59199e60afc9b13": true,
     "863100aa305eb66d102d11e284cd3d538b9de8461c936d6a1d65f99431dda178": true,
-    "242572c53e1974a300b65681217e8b13cbd9a539ca22335180f64bb84c6268da": true
+    "242572c53e1974a300b65681217e8b13cbd9a539ca22335180f64bb84c6268da": true,
+    "c10aff67b236aabf30154b7dd8cdf0f2b37e29faaa8f47ac3c8bbf38906c3be4": true,
+    "0be3dedd793946c1039fe00531dcd6b5fe89f1f015b0eb9fa3cc8b9b9b4e4a9b": true,
+    "b2df60e79a7baa891fde7ab1d87f3fe1ffd9c609d7d278dda7f00934ef4411e4": true
   },
   "lastByPair": {
     "USDT-USDC": {
-      "requestId": "2061ca403f23a161617ed034720f9e40c7548fff93bbb0e21668a0604b43e2c6",
-      "drBlockHeight": 7274066,
-      "txHash": "0xa486b299ae1abbd0b2d035ab97fa613aa42ba0471cc634b657ed13290b2e9c3f",
-      "updatedAt": "2026-01-15T02:15:37.257Z"
+      "requestId": "b2df60e79a7baa891fde7ab1d87f3fe1ffd9c609d7d278dda7f00934ef4411e4",
+      "drBlockHeight": 7274281,
+      "txHash": "0x331663950416f5aa52da6ad65c92a3c4a49e0c211fd6e43064a68e2f9611c4b6",
+      "updatedAt": "2026-01-15T02:44:53.074Z"
     },
     "WCRO-USDC": {
-      "requestId": "f862b583ccea4ded25b49b4e676fcaa088ac4a097f13823314b143ab264739a0",
-      "drBlockHeight": 7274080,
-      "txHash": "0xad760ae1588bf0b2a141ee41ea1f25b905f516322000fb4476afde1040f9de6b",
-      "updatedAt": "2026-01-15T02:17:28.990Z"
+      "requestId": "c10aff67b236aabf30154b7dd8cdf0f2b37e29faaa8f47ac3c8bbf38906c3be4",
+      "drBlockHeight": 7274260,
+      "txHash": "0xd55fafbe60cff2955101e27cfc1a8b8bca806d62e1add915f169c2a3c57eedd9",
+      "updatedAt": "2026-01-15T02:42:12.717Z"
     },
     "WCRO-ETH": {
-      "requestId": "242572c53e1974a300b65681217e8b13cbd9a539ca22335180f64bb84c6268da",
-      "drBlockHeight": 7274111,
-      "txHash": "0x38b59d0b2c2594a11fd96d3580be8091caf2750c793c50b671cfec35ded73b4a",
-      "updatedAt": "2026-01-15T02:21:44.503Z"
+      "requestId": "0be3dedd793946c1039fe00531dcd6b5fe89f1f015b0eb9fa3cc8b9b9b4e4a9b",
+      "drBlockHeight": 7274271,
+      "txHash": "0x8fb457c981060e6ad2012683888554dd4e53221ffca71df0059eda509f115ca1",
+      "updatedAt": "2026-01-15T02:43:37.864Z"
     },
     "VVS-WCRO": {
       "requestId": "44472ea95d4b814c7848a9bf3b6b424c0718c578bdaf313bf59199e60afc9b13",
