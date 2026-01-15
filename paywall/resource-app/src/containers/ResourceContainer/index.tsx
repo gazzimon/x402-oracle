@@ -42,7 +42,7 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
     apiBase: props.apiBase,
   });
   const pairs = useMemo(
-    () => ['USDT-USDC', 'WBTC-CRO', 'ETH-USDC', 'WCRO-USDC', 'VVS-CRO'],
+    () => ['USDT-USDC', 'WCRO-USDC', 'VVS-WCRO', 'WBTC-WCRO', 'WCRO-ETH'],
     []
   );
   const [pair, setPair] = useState<string>(pairs[0] ?? '');
