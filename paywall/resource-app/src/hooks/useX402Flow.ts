@@ -192,7 +192,13 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
           return;
         }
 
+        const isNewPair = pair !== lastPair;
         setLastPair(pair);
+        if (isNewPair) {
+          setData('');
+          setLastPayloadKey('');
+          setPaymentId('');
+        }
         setStatus(`Requesting /api/data?pair=${pair} ...`);
         if (!existingPaymentId) {
           setData('');
@@ -204,6 +210,16 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
           const result = await api.getData(pair, existingPaymentId);
 
           if (result.kind === 'ok') {
+            const payloadPair =
+              result.data && typeof result.data === 'object'
+                ? String((result.data as Record<string, unknown>).pair ?? '')
+                : '';
+            if (payloadPair && payloadPair !== pair && attempt < maxRetries) {
+              setStatus('Waiting for consensus... (stale pair)');
+              attempt += 1;
+              await wait(4000);
+              continue;
+            }
             const payloadKey = getPayloadKey(result.data);
             if (payloadKey && payloadKey === lastPayloadKey && attempt < maxRetries) {
               setStatus('Waiting for consensus... (retrying)');
@@ -229,7 +245,7 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
         setBusy(-1);
       }
     },
-    [api, handlePaymentChallenge]
+    [api, handlePaymentChallenge, lastPair]
   );
 
   /**

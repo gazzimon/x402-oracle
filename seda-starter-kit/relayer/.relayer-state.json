@@ -14,20 +14,24 @@
     "242572c53e1974a300b65681217e8b13cbd9a539ca22335180f64bb84c6268da": true,
     "c10aff67b236aabf30154b7dd8cdf0f2b37e29faaa8f47ac3c8bbf38906c3be4": true,
     "0be3dedd793946c1039fe00531dcd6b5fe89f1f015b0eb9fa3cc8b9b9b4e4a9b": true,
-    "b2df60e79a7baa891fde7ab1d87f3fe1ffd9c609d7d278dda7f00934ef4411e4": true
+    "b2df60e79a7baa891fde7ab1d87f3fe1ffd9c609d7d278dda7f00934ef4411e4": true,
+    "addc3617f6f13ed8b105ed10fd882d1dd41fd72798305ec1fe64228b0ac23b7e": true,
+    "e04b284ebe7c95756bbef65a5a76b998a308eb8bc08b05c658a98e92f0a02184": true,
+    "1aefcd3766c7a48d111f03c693c4ffa8eb60cc99879f33d702c3bfbd5f5c48bf": true,
+    "d634b9789481c12f4155abde6019f6ee22208cc1d490c8993daa3e72a5dde795": true
   },
   "lastByPair": {
     "USDT-USDC": {
-      "requestId": "b2df60e79a7baa891fde7ab1d87f3fe1ffd9c609d7d278dda7f00934ef4411e4",
-      "drBlockHeight": 7274281,
-      "txHash": "0x331663950416f5aa52da6ad65c92a3c4a49e0c211fd6e43064a68e2f9611c4b6",
-      "updatedAt": "2026-01-15T02:44:53.074Z"
+      "requestId": "addc3617f6f13ed8b105ed10fd882d1dd41fd72798305ec1fe64228b0ac23b7e",
+      "drBlockHeight": 7274343,
+      "txHash": "0x956048b8a6988ce895802cb9aba9f8773f1b54071401f931eddd8ed65413167e",
+      "updatedAt": "2026-01-15T02:53:12.266Z"
     },
     "WCRO-USDC": {
-      "requestId": "c10aff67b236aabf30154b7dd8cdf0f2b37e29faaa8f47ac3c8bbf38906c3be4",
-      "drBlockHeight": 7274260,
-      "txHash": "0xd55fafbe60cff2955101e27cfc1a8b8bca806d62e1add915f169c2a3c57eedd9",
-      "updatedAt": "2026-01-15T02:42:12.717Z"
+      "requestId": "d634b9789481c12f4155abde6019f6ee22208cc1d490c8993daa3e72a5dde795",
+      "drBlockHeight": 7274397,
+      "txHash": "0x9b8ea72fdb15d61228db1d07be91a1ee06dfdc89ecbe1f0594ba3ab1260bc2bc",
+      "updatedAt": "2026-01-15T03:00:42.723Z"
     },
     "WCRO-ETH": {
       "requestId": "0be3dedd793946c1039fe00531dcd6b5fe89f1f015b0eb9fa3cc8b9b9b4e4a9b",
@@ -42,10 +46,10 @@
       "updatedAt": "2026-01-15T02:19:16.166Z"
     },
     "WBTC-WCRO": {
-      "requestId": "863100aa305eb66d102d11e284cd3d538b9de8461c936d6a1d65f99431dda178",
-      "drBlockHeight": 7274102,
-      "txHash": "0x16f4a876494f5df63f5a2c7e3ec7864d2a9aa39df2f7aef247c62dde96379f8e",
-      "updatedAt": "2026-01-15T02:20:35.673Z"
+      "requestId": "e04b284ebe7c95756bbef65a5a76b998a308eb8bc08b05c658a98e92f0a02184",
+      "drBlockHeight": 7274353,
+      "txHash": "0x0e71e07ebc74f543a61c23302646346d98fd4988f8f1e1762765a0b7b077cb24",
+      "updatedAt": "2026-01-15T02:54:36.284Z"
     }
   }
 }
