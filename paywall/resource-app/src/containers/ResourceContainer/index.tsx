@@ -21,6 +21,7 @@ import {
   PrimaryButton,
   ResultCard,
   ResultLabel,
+  ReturnLink,
   StatCard,
   StatLabel,
   StatRow,
@@ -86,6 +87,7 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
     <StyledContainer>
       <ContentGrid>
         <Hero>
+          <ReturnLink href="/">Return to landing</ReturnLink>
           <Badge>VVS-styled x402 Oracle</Badge>
           <Title>Pay-per-query oracle pricing, with x402 on Cronos.</Title>
           <Subtitle>

@@ -21,6 +21,23 @@ export const Hero = styled.section`
   gap: 20px;
 `;
 
+export const ReturnLink = styled.a`
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 188, 225, 0.3);
+  background: rgba(8, 12, 24, 0.45);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    border-color: rgba(8, 241, 255, 0.5);
+    color: #08f1ff;
+  }
+`;
+
 export const Badge = styled.div`
   display: inline-flex;
   align-items: center;

@@ -12,6 +12,20 @@
 <body>
     <!-- Background Network Animation -->
     <canvas id="network-canvas"></canvas>
+    <div class="video-wall" aria-hidden="true">
+        <video muted playsinline preload="auto">
+            <source src="/video/01.mp4" type="video/mp4">
+        </video>
+        <video muted playsinline preload="metadata">
+            <source src="/video/02.mp4" type="video/mp4">
+        </video>
+        <video muted playsinline preload="metadata">
+            <source src="/video/03.mp4" type="video/mp4">
+        </video>
+        <video muted playsinline preload="metadata">
+            <source src="/video/04.mp4" type="video/mp4">
+        </video>
+    </div>
 
     <!-- Navigation -->
     <nav class="navbar" id="navbar">
@@ -38,8 +52,8 @@
                 <li><a href="#usecases">Use Cases</a></li>
             </ul>
             <div class="nav-cta">
-                <a href="https://github.com" target="_blank" class="nav-link">GitHub</a>
-                <a href="#demo" class="btn btn-primary">Live Demo</a>
+                <a href="https://github.com/gazzimon/x402-oracle/" target="_blank" class="nav-link">GitHub</a>
+                <a href="/app" class="btn btn-primary">Live Demo</a>
             </div>
         </div>
     </nav>
@@ -57,7 +71,7 @@
                 A new oracle primitive that turns raw data into verifiable execution decisions for agents and protocols on Cronos.
             </p>
             <div class="hero-ctas">
-                <a href="#demo" class="btn btn-primary btn-large">
+                <a href="/app" class="btn btn-primary btn-large">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="5 3 19 12 5 21 5 3"/>
                     </svg>
@@ -71,7 +85,7 @@
                     </svg>
                     Architecture
                 </a>
-                <a href="https://github.com" target="_blank" class="btn btn-ghost btn-large">
+                <a href="https://github.com/gazzimon/x402-oracle/" target="_blank" class="btn btn-ghost btn-large">
                     View on GitHub
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -366,7 +380,7 @@
                     <p>On-chain pay-per-request via x402 on Cronos</p>
                 </div>
                 <div class="step-code">
-                    <code>payment: x402微量</code>
+                    <code>payment: x402 payment</code>
                 </div>
             </div>
 
@@ -450,8 +464,9 @@
                         <path d="M2 12l10 5 10-5"/>
                     </svg>
                 </div>
-                <h3>DeFi Automation</h3>
-                <p>Trading agents on VVS Finance can execute with confidence using real-time risk assessment.</p>
+                <h3>Blocksize-bidask</h3>
+                <p>x402 Cronos-SEDA consensus for blocksize and bid/ask signals.</p>
+                <a class="usecase-link" href="https://github.com/gazzimon/x402-oracle/blob/main/seda-example-ops/examples/blocksize-bidask/README.md" target="_blank" rel="noreferrer">View example</a>
             </div>
             <div class="usecase-card">
                 <div class="usecase-icon">
@@ -460,8 +475,9 @@
                         <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                     </svg>
                 </div>
-                <h3>LP Fair Pricing</h3>
-                <p>Pool health monitoring and manipulation resistance for liquidity providers.</p>
+                <h3>Caplight-eod-market-price</h3>
+                <p>x402 Cronos-SEDA consensus for end-of-day market pricing.</p>
+                <a class="usecase-link" href="https://github.com/gazzimon/x402-oracle/tree/main/seda-example-ops/examples/caplight-eod-market-price/README.md" target="_blank" rel="noreferrer">View example</a>
             </div>
             <div class="usecase-card">
                 <div class="usecase-icon">
@@ -469,8 +485,9 @@
                         <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
                     </svg>
                 </div>
-                <h3>Bridges</h3>
-                <p>Execution gating by risk signals. Prevent cross-chain attacks with on-chain validation.</p>
+                <h3>Commodity-price</h3>
+                <p>x402 Cronos-SEDA consensus for single commodity pricing.</p>
+                <a class="usecase-link" href="https://github.com/gazzimon/x402-oracle/tree/main/seda-example-ops/examples/single-commodity-price/README.md" target="_blank" rel="noreferrer">View example</a>
             </div>
             <div class="usecase-card">
                 <div class="usecase-icon">
@@ -480,8 +497,9 @@
                         <line x1="12" y1="17" x2="12" y2="21"/>
                     </svg>
                 </div>
-                <h3>RWA Tokenization</h3>
-                <p>Pre-execution valuation and verification for real-world asset tokenization.</p>
+                <h3>Average-crypto-feed</h3>
+                <p>x402 Cronos-SEDA consensus for multi-asset average feeds.</p>
+                <a class="usecase-link" href="https://github.com/gazzimon/x402-oracle/tree/main/seda-example-ops/examples/multi-price-feed/README.md" target="_blank" rel="noreferrer">View example</a>
             </div>
             <div class="usecase-card">
                 <div class="usecase-icon">
@@ -489,8 +507,9 @@
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                     </svg>
                 </div>
-                <h3>Governance</h3>
-                <p>Objective oracle-driven inputs for protocol governance decisions.</p>
+                <h3>Us-rates</h3>
+                <p>x402 Cronos-SEDA consensus for U.S. rates data.</p>
+                <a class="usecase-link" href="https://github.com/gazzimon/x402-oracle/tree/main/seda-example-ops/examples/us-rates/README.md" target="_blank" rel="noreferrer">View example</a>
             </div>
             <div class="usecase-card">
                 <div class="usecase-icon">
@@ -503,8 +522,9 @@
                         <line x1="15" y1="20" x2="15" y2="23"/>
                     </svg>
                 </div>
-                <h3>IoT Data</h3>
-                <p>Trusted real-world signals for smart contracts. Verify sensor data integrity.</p>
+                <h3>Generic-dxfeed</h3>
+                <p>x402 Cronos-SEDA consensus for generic dxFeed integration.</p>
+                <a class="usecase-link" href="https://github.com/gazzimon/x402-oracle/tree/main/seda-example-ops/examples/generic-dxfeed/README.md" target="_blank" rel="noreferrer">View example</a>
             </div>
         </div>
     </section>
@@ -622,9 +642,9 @@
             <div class="footer-links">
                 <div class="footer-column">
                     <h4>Resources</h4>
-                    <a href="https://github.com" target="_blank">GitHub</a>
+                    <a href="https://github.com/gazzimon/x402-oracle/" target="_blank">GitHub</a>
                     <a href="#docs">Documentation</a>
-                    <a href="#demo">Live Demo</a>
+                    <a href="/app">Live Demo</a>
                 </div>
                 <div class="footer-column">
                     <h4>Hackathon</h4>

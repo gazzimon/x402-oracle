@@ -512,6 +512,110 @@ class ScrollProgress {
 }
 
 // ========================================
+// 10. Video Wall Sequencer
+// ========================================
+class VideoWall {
+    constructor() {
+        this.videos = Array.from(document.querySelectorAll('.video-wall video'));
+        if (this.videos.length === 0) {
+            return;
+        }
+        this.currentIndex = 0;
+        this.setupVideos();
+        this.bindEvents();
+        this.playCurrent();
+    }
+
+    setupVideos() {
+        this.videos.forEach((video, index) => {
+            video.loop = false;
+            video.muted = true;
+            video.playsInline = true;
+            video.defaultPlaybackRate = 2;
+            video.playbackRate = 2;
+            if (index !== 0) {
+                video.preload = 'metadata';
+            }
+        });
+        if (this.videos[0]) {
+            this.videos[0].preload = 'auto';
+            this.videos[0].load();
+        }
+    }
+
+    bindEvents() {
+        this.videos.forEach((video, index) => {
+            video.addEventListener('ended', () => {
+                if (index === this.currentIndex) {
+                    this.next();
+                }
+            });
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.pauseAll();
+            } else {
+                this.playCurrent();
+            }
+        });
+
+        window.addEventListener('click', () => {
+            const current = this.videos[this.currentIndex];
+            if (current && current.paused) {
+                current.play().catch(() => {});
+            }
+        }, { once: true });
+    }
+
+    pauseAll() {
+        this.videos.forEach(video => {
+            video.pause();
+            video.classList.remove('is-active');
+        });
+    }
+
+    playCurrent() {
+        this.videos.forEach((video, index) => {
+            if (index === this.currentIndex) {
+                video.preload = 'auto';
+                video.classList.add('is-active');
+                try {
+                    video.currentTime = 0;
+                } catch (error) {
+                    // Ignore when metadata isn't ready yet.
+                }
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(() => {});
+                }
+            } else {
+                video.pause();
+                video.classList.remove('is-active');
+            }
+        });
+        this.primeNext();
+    }
+
+    next() {
+        this.currentIndex = (this.currentIndex + 1) % this.videos.length;
+        this.playCurrent();
+    }
+
+    primeNext() {
+        if (this.videos.length < 2) {
+            return;
+        }
+        const nextIndex = (this.currentIndex + 1) % this.videos.length;
+        const nextVideo = this.videos[nextIndex];
+        if (nextVideo) {
+            nextVideo.preload = 'auto';
+            nextVideo.load();
+        }
+    }
+}
+
+// ========================================
 // Main Initialization
 // ========================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -525,6 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
     new HeroAnimation();
     new FeatureCardInteraction();
     new ScrollProgress();
+    new VideoWall();
 
     // Add loaded class to body for CSS animations
     document.body.classList.add('loaded');

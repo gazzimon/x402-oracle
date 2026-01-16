@@ -531,8 +531,8 @@ class VideoWall {
             video.loop = false;
             video.muted = true;
             video.playsInline = true;
-            video.defaultPlaybackRate = 1.5;
-            video.playbackRate = 1.5;
+            video.defaultPlaybackRate = 2;
+            video.playbackRate = 2;
             if (index !== 0) {
                 video.preload = 'metadata';
             }
