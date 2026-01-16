@@ -16,8 +16,8 @@ const SEDA_STARTER_KIT_PATH =
   process.env.SEDA_STARTER_KIT_PATH ?? path.resolve(process.cwd(), '../../seda-starter-kit');
 
 const consumerAbi = [
-  'function prices(bytes32) view returns (uint256)',
-  'function lastUpdate(bytes32) view returns (uint256)',
+  'function payloadHashByPair(bytes32) view returns (bytes32)',
+  'function drBlockHeightByPair(bytes32) view returns (uint64)',
 ];
 
 type RelayerState = {
@@ -26,6 +26,8 @@ type RelayerState = {
     {
       requestId?: string;
       drBlockHeight?: number;
+      payloadHash?: string;
+      values?: string[];
       txHash?: string;
       updatedAt?: string;
     }
@@ -77,10 +79,12 @@ function runPostDrRelay(pair: string): Promise<void> {
 }
 
 function formatScaled(value: bigint, decimals: number): string {
+  const sign = value < 0n ? '-' : '';
+  const abs = value < 0n ? -value : value;
   const base = BigInt(10 ** decimals);
-  const integer = value / base;
-  const fraction = (value % base).toString().padStart(decimals, '0');
-  return `${integer.toString()}.${fraction}`;
+  const integer = abs / base;
+  const fraction = (abs % base).toString().padStart(decimals, '0');
+  return `${sign}${integer.toString()}.${fraction}`;
 }
 
 /**
@@ -132,28 +136,37 @@ export class ResourceService {
   async getSecretPayload(pair: string) {
     const consumer = this.getConsumer();
     const pairKey = ethers.keccak256(ethers.toUtf8Bytes(pair));
-    const [price, lastUpdate] = await Promise.all([
-      consumer.prices(pairKey),
-      consumer.lastUpdate(pairKey),
+    const [payloadHashOnchain, drBlockHeightOnchain] = await Promise.all([
+      consumer.payloadHashByPair(pairKey),
+      consumer.drBlockHeightByPair(pairKey),
     ]);
 
-    const scaled = BigInt(price.toString());
     const state = loadRelayerState();
     const meta = state.lastByPair?.[pair];
     const drId = meta?.requestId ?? '';
-    const drBlockHeight = meta?.drBlockHeight ?? null;
+    const drBlockHeight =
+      meta?.drBlockHeight ?? (drBlockHeightOnchain !== undefined ? Number(drBlockHeightOnchain) : null);
     const sedaExplorerUrl =
       drId && drBlockHeight
         ? `${SEDA_EXPLORER_BASE}/data-requests/${drId}/${drBlockHeight}`
         : null;
 
+    const values = meta?.values ?? [];
+    const decimals = 6;
+    const primary = values.length ? BigInt(values[0]) : null;
+    const priceScaled = primary ? primary.toString() : null;
+    const price = primary ? formatScaled(primary, decimals) : null;
+
     return {
       ok: true,
       pair,
-      priceScaled: scaled.toString(),
-      price: formatScaled(scaled, 8),
-      decimals: 8,
-      lastUpdate: lastUpdate.toString(),
+      values,
+      priceScaled,
+      price,
+      decimals,
+      payloadHash: payloadHashOnchain,
+      payloadHashOffchain: meta?.payloadHash ?? null,
+      drBlockHeightOnchain: drBlockHeightOnchain.toString(),
       sedaExplorerUrl,
       sedaRequestId: drId || null,
       cronosTxHash: meta?.txHash ?? null,

@@ -32,6 +32,8 @@ type RelayerState = {
     {
       requestId: string;
       drBlockHeight?: number;
+      payloadHash?: string;
+      values?: string[];
       txHash?: string;
       updatedAt?: string;
     }
@@ -58,7 +60,9 @@ const ONESHOT =
   process.env.ONESHOT === 'true' || hasArg('--once') || Boolean(DR_ID) || Boolean(DR_RESULT);
 
 const consumerAbi = [
-  'function submitResult(bytes32 requestId, bytes32 pair, uint256 value, bytes sedaProof)',
+  'function submitResult(bytes32 requestId, bytes32 pair, int256[] values, uint64 drBlockHeight, bytes sedaProof)',
+  'function payloadHashByPair(bytes32) view returns (bytes32)',
+  'function drBlockHeightByPair(bytes32) view returns (uint64)',
 ];
 
 function loadState(): RelayerState {
@@ -118,6 +122,29 @@ function stripHexPrefix(value: string): string {
   return value.startsWith('0x') ? value.slice(2) : value;
 }
 
+function decodeResultValues(resultHex: string): bigint[] {
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const bytes = ethers.getBytes(normalizeHex(resultHex));
+  const [values] = coder.decode(['int256[]'], bytes) as unknown as [Array<bigint | string | number>];
+  return Array.from(values, (v) => BigInt(v.toString()));
+}
+
+function hashPayload(
+  requestId: string,
+  pairHash: string,
+  values: bigint[],
+  drBlockHeight: bigint,
+): string {
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const encoded = coder.encode(['bytes32', 'bytes32', 'int256[]', 'uint64'], [
+    normalizeHex(requestId),
+    pairHash,
+    values,
+    drBlockHeight,
+  ]);
+  return ethers.keccak256(encoded);
+}
+
 async function fetchRequests(): Promise<ExplorerRequest[]> {
   const url = new URL(SEDA_API_URL);
   if (!url.searchParams.has('limit')) {
@@ -168,22 +195,30 @@ async function main() {
 
     const pair = DR_PAIR || decodeExecInputs(req.execInputs) || 'WCRO-USDC';
     const pairHash = ethers.keccak256(ethers.toUtf8Bytes(pair));
+    const drBlockHeightValue = BigInt(req.drBlockHeight ?? req.blockHeight ?? DR_BLOCK_HEIGHT ?? 0);
+    if (drBlockHeightValue === 0n) {
+      throw new Error('Missing drBlockHeight for relay submission');
+    }
 
-    const value = BigInt(result.startsWith('0x') ? result : `0x${result}`);
-    console.log(`Relaying ${pair} (${requestId}) = ${value.toString()}`);
+    const valuesForHash = decodeResultValues(result);
+    const valuesString = valuesForHash.map((v) => v.toString());
+    console.log(`Relaying ${pair} (${requestId}) = [${valuesString.join(', ')}]`);
 
     const requestIdHex = normalizeHex(requestId);
-    const tx = await consumer.submitResult(requestIdHex, pairHash, value, proof);
+    const tx = await consumer.submitResult(requestIdHex, pairHash, valuesString, drBlockHeightValue, proof);
     console.log(`Submitted tx: ${tx.hash}`);
     await tx.wait();
 
     state.processed[requestId] = true;
     const drBlockHeight = req.drBlockHeight ?? req.blockHeight ?? DR_BLOCK_HEIGHT;
     const requestIdPlain = stripHexPrefix(requestId);
+    const payloadHash = hashPayload(requestIdHex, pairHash, valuesForHash, drBlockHeightValue);
     state.lastByPair = state.lastByPair ?? {};
     state.lastByPair[pair] = {
       requestId: requestIdPlain,
       drBlockHeight,
+      payloadHash,
+      values: valuesString,
       txHash: tx.hash,
       updatedAt: new Date().toISOString(),
     };

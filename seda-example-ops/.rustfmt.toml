@@ -1,5 +1,0 @@
-# Stable Rustfmt Flags
-edition = "2024"
-merge_derives = true
-newline_style = "Unix"
-use_field_init_shorthand = true
