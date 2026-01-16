@@ -1,0 +1,19 @@
+{
+	"Quote": {
+		"XAU/USD:BFX": {
+			"askExchangeCode": "",
+			"askPrice": 3313.99,
+			"askSize": 100,
+			"askTime": 1753710744000,
+			"bidExchangeCode": "",
+			"bidPrice": 3313.83,
+			"bidSize": 100,
+			"bidTime": 1753710744000,
+			"eventSymbol": "XAU/USD:BFX",
+			"eventTime": 0,
+			"sequence": 0,
+			"timeNanoPart": 0
+		}
+	},
+	"status": "OK"
+}

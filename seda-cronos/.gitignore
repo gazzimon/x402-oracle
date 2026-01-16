@@ -1,0 +1,19 @@
+# Environment variables
+.env*
+!.env.example
+
+# Dependency directories
+node_modules
+
+# Build files
+build
+
+# TypeChain files
+/typechain
+/typechain-types
+
+# OS files
+.DS_Store
+
+# Added by cargo
+/target
