@@ -95,26 +95,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blocksize-bidask"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ethabi",
- "seda-sdk-rs",
- "serde_json",
-]
-
-[[package]]
-name = "blocksize-vwap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ethabi",
- "seda-sdk-rs",
- "serde_json",
-]
-
-[[package]]
 name = "byte-slice-cast"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -486,17 +466,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
-name = "jup-price-feed"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ethabi",
- "seda-sdk-rs",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "keccak"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -792,17 +761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "single-equity-price"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ethabi",
- "seda-sdk-rs",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "single-equity-price-verification"
 version = "0.1.0"
 dependencies = [
@@ -810,16 +768,6 @@ dependencies = [
  "ethabi",
  "seda-sdk-rs",
  "serde",
- "serde_json",
-]
-
-[[package]]
-name = "single-price-feed"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ethabi",
- "seda-sdk-rs",
  "serde_json",
 ]
 
@@ -957,17 +905,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "us-rates"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ethabi",
- "seda-sdk-rs",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "utf8parse"

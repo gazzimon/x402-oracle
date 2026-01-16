@@ -151,7 +151,7 @@ pub fn execution_phase() -> Result<()> {
     }
     log!("Fetching price for asset type: {asset_type}, symbol: {symbol}");
 
-    let url = [API_URL, asset_type, "/", symbol].concat();
+    let url = [API_URL, asset_type, "/", &symbol].concat();
     let response = proxy_http_fetch(
         url,
         Some(PROXY_PUBLIC_KEY.to_string()),

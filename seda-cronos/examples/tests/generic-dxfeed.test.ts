@@ -63,8 +63,8 @@ describe('single commodity price', () => {
       fetchMock.mockImplementation((_) => {
         return new Response(
           JSON.stringify({
-            Quote: {
-              'AAPL:USLF24': {
+            Trade: {
+              AAPL: {
                 askExchangeCode: 'U',
                 askPrice: 214.44,
                 askSize: 123,
