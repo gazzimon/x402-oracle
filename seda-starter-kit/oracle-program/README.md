@@ -88,6 +88,24 @@ All values are scaled by **1e6** and returned as `int256[4]` in this fixed order
 /// values[3] = flags (bitmask: bit0 = volatility_alert)
 ```
 
+## Validation Checklist (Testnet)
+
+Use this section to validate the end-to-end pipeline for the jury.
+
+- Oracle Program ID (SEDA): `0x61d26d8e7693b39a4296e1ecba45595bc7cdbbeecb1043c7034c8f99498f1504`
+- DR ID (SEDA): `ba65b51684c798468ef9282cf245d96d45942beeec73a0b73c5c607ca768ed15`
+- DR Explorer Link: `https://testnet.explorer.seda.xyz/data-requests/ba65b51684c798468ef9282cf245d96d45942beeec73a0b73c5c607ca768ed15/7299903`
+- Cronos Consumer: `0xe0F946B25e4cce13FeF052cc76573fA8dF74D9D9`
+- Relayer TX (Cronos testnet): `0x383aaf3d2ac7b36a4702fd62cd63db74405713fe9991a501b6b934c965748576`
+- Cronos Explorer Link: `https://testnet.cronoscan.com/tx/0x383aaf3d2ac7b36a4702fd62cd63db74405713fe9991a501b6b934c965748576`
+
+Observed values (1e6 scale):
+
+- `values[0] = 102308` → `0.102308` (fair_price)
+- `values[1] = 943288` → `0.943288` (confidence_score)
+- `values[2] = 26581068577` → `26581.068577` (max_safe_execution_size)
+- `values[3] = 0` (flags)
+
 ## Output Semantics (WCRO-USDC)
 
 ### Input (fixed)

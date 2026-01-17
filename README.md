@@ -75,3 +75,84 @@ Autonomy: a new generation of AI agents that operate profitably and safely, payi
 ## License
 
 This project is licensed under the **MIT License**.
+
+## Output Format (Canonical)
+
+On-chain output is a fixed `int256[4]` array with **1e6 scale**:
+
+```
+values[0] = fair_price (1e6)
+values[1] = confidence_score (1e6)
+values[2] = max_safe_execution_size (1e6)
+values[3] = flags (bitmask)
+```
+
+## Output Formulas (WCRO-USDC)
+
+Pool (VVS V2): `0xE61Db569E231B3f5530168Aa2C9D50246525b6d6`
+
+Let `reserveUSDC` and `reserveWCRO` be the normalized reserves (USDC 6 decimals, WCRO 18):
+
+```
+spot_1e6 = (reserveUSDC_now * 1e18) / reserveWCRO_now
+hist_1e6 = (reserveUSDC_hist * 1e18) / reserveWCRO_hist
+```
+
+Fair price (weighted):
+
+```
+fair_price_1e6 = (2 * spot_1e6 + hist_1e6) / 3
+```
+
+Liquidity score (1e6):
+
+```
+liquidity_usdc = reserveUSDC_now * 2
+L = 500_000 * 1e6
+liq_score_1e6 = min(1e6, (liquidity_usdc * 1e6) / L)
+```
+
+Temporal score (1e6):
+
+```
+delta_1e6 = (abs(spot_1e6 - hist_1e6) * 1e6) / spot_1e6
+time_score_1e6 = clamp(1e6 - (delta_1e6 * 1e6) / 50_000, 0, 1e6)
+```
+
+Confidence (60/40):
+
+```
+confidence_1e6 = (600_000 * liq_score_1e6 + 400_000 * time_score_1e6) / 1_000_000
+```
+
+Max safe execution size (1e6, USDC input) with AMM V2 formula:
+
+```
+amountOut = (amountIn * 997 * reserveOut) / (reserveIn * 1000 + amountIn * 997)
+effective_price_1e6 = (amountIn * 1e18) / amountOut
+slippage_1e6 = (abs(effective_price_1e6 - spot_1e6) * 1e6) / spot_1e6
+```
+
+Find max `amountIn` such that `slippage_1e6 < 10_000` via bisection.
+
+## Flags (values[3])
+
+- `bit0 (0x1)`: CRITICAL_DIVERGENCE if `delta_1e6 > 50_000` (5%)
+- `bit1 (0x2)`: LOW_LIQUIDITY if `liq_score_1e6 < 200_000`
+- `bit2 (0x4)`: UNSAFE_CONFIDENCE if `confidence_1e6 < 200_000`
+
+## Validation Checklist (Testnet)
+
+- Oracle Program ID (SEDA): `0x61d26d8e7693b39a4296e1ecba45595bc7cdbbeecb1043c7034c8f99498f1504`
+- DR ID (SEDA): `ba65b51684c798468ef9282cf245d96d45942beeec73a0b73c5c607ca768ed15`
+- DR Explorer Link: `https://testnet.explorer.seda.xyz/data-requests/ba65b51684c798468ef9282cf245d96d45942beeec73a0b73c5c607ca768ed15/7299903`
+- Cronos Consumer: `0xe0F946B25e4cce13FeF052cc76573fA8dF74D9D9`
+- Relayer TX (Cronos testnet): `0x383aaf3d2ac7b36a4702fd62cd63db74405713fe9991a501b6b934c965748576`
+- Cronos Explorer Link: `https://testnet.cronoscan.com/tx/0x383aaf3d2ac7b36a4702fd62cd63db74405713fe9991a501b6b934c965748576`
+
+Observed values (1e6 scale):
+
+- `values[0] = 102308` → `0.102308` (fair_price)
+- `values[1] = 943288` → `0.943288` (confidence_score)
+- `values[2] = 26581068577` → `26581.068577` (max_safe_execution_size)
+- `values[3] = 0` (flags)
