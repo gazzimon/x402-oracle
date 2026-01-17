@@ -69,10 +69,20 @@ function decodeInt256Array(hex: string, expected: number): bigint[] {
         throw new Error(`Invalid ABI length: ${cleaned.length}`);
     }
     const chunks = cleaned.match(/.{1,64}/g) ?? [];
-    if (chunks.length < expected) {
-        throw new Error(`Expected ${expected} values, got ${chunks.length}`);
+    if (chunks.length < 2) {
+        throw new Error('Invalid ABI payload');
     }
-    return chunks.slice(0, expected).map((chunk) => decodeInt256(chunk));
+    const offset = parseInt(chunks[0], 16) / 32;
+    const length = parseInt(chunks[offset], 16);
+    if (length !== expected) {
+        throw new Error(`Expected ${expected} values, got ${length}`);
+    }
+    const values: bigint[] = [];
+    for (let i = 0; i < length; i += 1) {
+        const chunk = chunks[offset + 1 + i];
+        values.push(decodeInt256(chunk));
+    }
+    return values;
 }
 
 function decodeInt256(chunk: string): bigint {

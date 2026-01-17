@@ -77,16 +77,22 @@ describe("data request execution", () => {
 
     expect(vmResult.exitCode).toBe(0);
     const values = decodeInt256ArrayAbi(vmResult.result);
-    const expectedMaxSize =
-      (1_000_000_000_000n * 4_987_562_112n) / 1_000_000_000n;
+    const expectedMaxSize = maxSafeExecutionSize(
+      1_000_000_000_000n,
+      1_000_000_000_000_000_000n,
+      1_000_000_000_000n
+    );
     expect(values).toEqual([1_000_000_000_000n, 1_000_000n, expectedMaxSize, 0n]);
   });
 
   it('should tally all results in a single data point', async () => {
     const oracleProgram = await file(WASM_PATH).arrayBuffer();
 
-    const expectedMaxSize =
-      (1_000_000_000_000n * 4_987_562_112n) / 1_000_000_000n;
+    const expectedMaxSize = maxSafeExecutionSize(
+      1_000_000_000_000n,
+      1_000_000_000_000_000_000n,
+      1_000_000_000_000n
+    );
     const buffer = encodeInt256ArrayAbi([
       1_000_000n,
       1_000_000n,
@@ -137,4 +143,46 @@ function decodeInt256ArrayAbi(bytes: Uint8Array): bigint[] {
     result.push(signed);
   }
   return result;
+}
+
+function maxSafeExecutionSize(
+  reserveIn: bigint,
+  reserveOut: bigint,
+  spot1e6: bigint
+): bigint {
+  let low = 0n;
+  let high = reserveIn / 2n;
+  let best = 0n;
+
+  for (let i = 0; i < 28; i += 1) {
+    const mid = (low + high) / 2n;
+    if (mid === 0n) break;
+    const amountOut = ammAmountOut(mid, reserveIn, reserveOut);
+    if (amountOut === 0n) {
+      high = mid - 1n;
+      continue;
+    }
+    const effectivePrice = (mid * 1_000_000_000_000_000_000n) / amountOut;
+    const slippage = (absDiff(effectivePrice, spot1e6) * 1_000_000n) / spot1e6;
+    if (slippage < 10_000n) {
+      best = mid;
+      low = mid + 1n;
+    } else {
+      high = mid - 1n;
+    }
+  }
+
+  return best;
+}
+
+function ammAmountOut(amountIn: bigint, reserveIn: bigint, reserveOut: bigint): bigint {
+  const amountInWithFee = amountIn * 997n;
+  const numerator = amountInWithFee * reserveOut;
+  const denominator = reserveIn * 1000n + amountInWithFee;
+  if (denominator === 0n) return 0n;
+  return numerator / denominator;
+}
+
+function absDiff(a: bigint, b: bigint): bigint {
+  return a >= b ? a - b : b - a;
 }

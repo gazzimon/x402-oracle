@@ -1,13 +1,13 @@
 # VVS WCRO/USDC Oracle Program
 
-This oracle program reads VVS pool reserves on Cronos EVM and returns an **ABI-encoded `int256[]` (length 4)** with a single fixed-point scale of **1e6**.
+This oracle program reads VVS pool reserves on Cronos EVM and returns an **ABI-encoded `int256[4]`** with a single fixed-point scale of **1e6**.
 
 ## Overview
 
 - Uses hardcoded VVS pool addresses
 - Reads VVS pool reserves (V2)
-- Uses on-chain 24h historical reserves to compute a simple 24h anchor price
-- Outputs a canonical `int256[]` scaled to **1e6**
+- Uses a ~24h historical anchor block for comparison
+- Outputs a canonical `int256[4]` scaled to **1e6**
 
 This matches the output expectations of the Cronos consumer used by x402 (single write, extensible array).
 
@@ -20,14 +20,14 @@ The oracle supports only one pair for the demo (input is case-insensitive):
 ## Execution Phase
 
 - Calls Cronos JSON-RPC to read pool data
-- Computes spot price, 24h anchor price, and a simple TWAP proxy
-- Returns the ABI-encoded `int256[]` to the tally phase
+- Computes spot price and ~24h anchor price
+- Returns the ABI-encoded `int256[4]` to the tally phase
 
 ## Tally Phase
 
-- Parses the execution reveal as `int256[]`
+- Parses the execution reveal as `int256[4]`
 - Computes the median per field if multiple reveals are present
-- ABI-encodes the result as `int256[]`
+- ABI-encodes the result as `int256[4]`
 
 ## Build (testnet)
 
@@ -79,11 +79,101 @@ Switching from the large VVS pairs JSON payload to hardcoded pools + on-chain re
 
 ## Output Format
 
-All values are scaled by **1e6** and returned as `int256[]` in this fixed order:
+All values are scaled by **1e6** and returned as `int256[4]` in this fixed order:
 
 ```solidity
 /// values[0] = fair_price (1e6)
 /// values[1] = confidence_score (1e6)
 /// values[2] = max_safe_execution_size (1e6)
 /// values[3] = flags (bitmask: bit0 = volatility_alert)
+```
+
+## Output Semantics (WCRO-USDC)
+
+### Input (fixed)
+
+Execution input must be JSON:
+
+```json
+{"pair":"WCRO-USDC"}
+```
+
+Any other input is rejected.
+
+### On-chain data source
+
+- Pool (VVS V2): `0xE61Db569E231B3f5530168Aa2C9D50246525b6d6`
+- `token0()` selector: `0x0dfe1681`
+- `getReserves()` selector: `0x0902f1ac`
+- WCRO: `0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23` (18 decimals)
+- USDC: `0xc21223249CA28397B4B6541dfFaEcC539BfF0c59` (6 decimals)
+
+### Historical anchor block (~24h)
+
+- Fetch latest block `B_now` via `eth_blockNumber`.
+- Estimate `blocks_24h = 86400 / 5 = 17280`.
+- Use `B_hist = B_now - blocks_24h` as the historical block tag.
+
+### Spot and historical prices
+
+Let `reserveUSDC` / `reserveWCRO` come from `getReserves()` after normalizing
+by `token0()`:
+
+```
+spot_1e6 = (reserveUSDC_now * 1e18) / reserveWCRO_now
+hist_1e6 = (reserveUSDC_hist * 1e18) / reserveWCRO_hist
+```
+
+### values[0] Fair Price
+
+Weighted fair price (must include spot):
+
+```
+fair_price_1e6 = (2 * spot_1e6 + hist_1e6) / 3
+```
+
+### values[1] Confidence Score (1e6)
+
+Two factors:
+
+1) Liquidity factor (50/50 AMM proxy)
+
+```
+liquidity_usdc = reserveUSDC_now * 2
+L = 500_000 * 1e6
+liq_score_1e6 = min(1e6, (liquidity_usdc * 1e6) / L)
+```
+
+2) Temporal coherence factor (spot vs hist)
+
+```
+delta_1e6 = (abs(spot_1e6 - hist_1e6) * 1e6) / spot_1e6
+time_score_1e6 = clamp(1e6 - (delta_1e6 * 1e6) / 50_000, 0, 1e6)
+```
+
+Weighted combine (60/40):
+
+```
+confidence_1e6 = (600_000 * liq_score_1e6 + 400_000 * time_score_1e6) / 1_000_000
+```
+
+### values[2] Max Safe Execution Size (1e6)
+
+Max USDC input size such that price impact is <1% using AMM V2:
+
+```
+amountOut = (amountIn * 997 * reserveOut) / (reserveIn * 1000 + amountIn * 997)
+effective_price_1e6 = (amountIn * 1e18) / amountOut
+slippage_1e6 = (abs(effective_price_1e6 - spot_1e6) * 1e6) / spot_1e6
+```
+
+Find the maximum `amountIn` (USDC base units) with `slippage_1e6 < 10_000`
+using bisection.
+
+### values[3] Flags (bitmask)
+
+```
+bit0 (0x1): CRITICAL_DIVERGENCE if delta_1e6 > 50_000
+bit1 (0x2): LOW_LIQUIDITY if liq_score_1e6 < 200_000
+bit2 (0x4): UNSAFE_CONFIDENCE if confidence_1e6 < 200_000
 ```

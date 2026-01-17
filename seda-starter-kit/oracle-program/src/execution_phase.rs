@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 const RPC_URL: &str =
-    "https://mainnet-sticky.cronoslabs.com/v1/d3642384d334ff6ff1c4baebfdf3ef7d";
+    "https://cronos.blockpi.network/v1/rpc/0467a344ecda6f87cc7118bd02a14f5818a2f5ff";
 
 const SELECTOR_GET_RESERVES: &str = "0902f1ac";
 const SELECTOR_TOKEN0: &str = "0dfe1681";
@@ -22,12 +22,12 @@ const USDC_ADDRESS: &str = "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59";
 const WCRO_USDC_PAIR: &str = "0xE61Db569E231B3f5530168Aa2C9D50246525b6d6";
 
 const SCALE: u128 = 1_000_000;
-const VOL_ALERT_SPOT_TWAP_BPS: u128 = 20_000;
-const VOL_ALERT_24H_BPS: u128 = 50_000;
-const MAX_FRESHNESS_SECS: u64 = 3600;
-const LIQUIDITY_TARGET_USDC_1E6: u128 = 1_000_000_000_000;
-const SLIPPAGE_FACTOR_NUM: u128 = 4_987_562_112;
-const SLIPPAGE_FACTOR_DEN: u128 = 1_000_000_000;
+const BLOCKS_24H_ESTIMATE: u64 = 17_280;
+const LIQUIDITY_TARGET_USDC_1E6: u128 = 500_000_000_000;
+const LIQUIDITY_WARN_SCORE: u128 = 200_000;
+const CONFIDENCE_WARN_SCORE: u128 = 200_000;
+const DIVERGENCE_WARN_1E6: u128 = 50_000;
+const SLIPPAGE_LIMIT_1E6: u128 = 10_000;
 const TARGET_PAIR: &str = "WCRO-USDC";
 
 pub fn execution_phase() -> Result<()> {
@@ -57,31 +57,30 @@ fn execution_phase_inner() -> Result<()> {
         .ok_or_else(|| anyhow!("Failed to parse token0 address"))?;
 
     let latest_block = rpc_get_block_number()?;
-    let latest_block_info = rpc_get_block_by_number(latest_block)?;
-    let target_timestamp = latest_block_info.timestamp.saturating_sub(24 * 60 * 60);
-    let block_24h = find_block_by_timestamp(target_timestamp, latest_block)?;
+    let block_24h = latest_block.saturating_sub(BLOCKS_24H_ESTIMATE);
     let latest_reserves = get_reserves(pair_config.pair, Some(latest_block))?;
     let spot_now = price_from_reserves(&pair_config, &token0, &latest_reserves)?;
 
     let reserves_24h = get_reserves(pair_config.pair, Some(block_24h))?;
     let price_24h = price_from_reserves(&pair_config, &token0, &reserves_24h)?;
 
-    let twap_price = (spot_now + price_24h) / 2;
-    let fair_price = (spot_now + twap_price) / 2;
+    let fair_price = (spot_now.saturating_mul(2) + price_24h) / 3;
 
-    let dispersion = ratio_scaled_u128(abs_diff_u128(spot_now, twap_price), spot_now)?;
     let liquidity_score = liquidity_score(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
-    let freshness_score = freshness_score(
-        latest_block_info.timestamp,
-        latest_reserves.block_timestamp_last,
+    let delta_1e6 = ratio_scaled_u128(abs_diff_u128(spot_now, price_24h), spot_now)?;
+    let time_score = temporal_score(delta_1e6);
+    let confidence_score = (U256::from(600_000u128) * U256::from(liquidity_score)
+        + U256::from(400_000u128) * U256::from(time_score))
+        / U256::from(SCALE);
+    let confidence_score = confidence_score.as_u128();
+
+    let max_safe_execution_size = max_safe_execution_size(
+        latest_reserves.quote_reserve(&token0, &pair_config)?,
+        latest_reserves.base_reserve(&token0, &pair_config)?,
+        spot_now,
     )?;
-    let confidence_score = combine_confidence(dispersion, liquidity_score, freshness_score);
 
-    let max_safe_execution_size =
-        max_safe_execution_size(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
-
-    let volatility_alert = should_alert(spot_now, price_24h, twap_price);
-    let flags = if volatility_alert { 1u128 } else { 0u128 };
+    let flags = build_flags(delta_1e6, liquidity_score, confidence_score);
 
     let values = vec![
         U256::from(fair_price),
@@ -138,7 +137,6 @@ fn parse_input_pair(input: &str) -> Result<String> {
 struct Reserves {
     reserve0: U256,
     reserve1: U256,
-    block_timestamp_last: u64,
 }
 
 impl Reserves {
@@ -147,6 +145,16 @@ impl Reserves {
             Ok(self.reserve1)
         } else if token0.eq_ignore_ascii_case(config.quote) {
             Ok(self.reserve0)
+        } else {
+            Err(anyhow!("token0 mismatch for pair"))
+        }
+    }
+
+    fn base_reserve(&self, token0: &str, config: &PairConfig) -> Result<U256> {
+        if token0.eq_ignore_ascii_case(config.base) {
+            Ok(self.reserve0)
+        } else if token0.eq_ignore_ascii_case(config.quote) {
+            Ok(self.reserve1)
         } else {
             Err(anyhow!("token0 mismatch for pair"))
         }
@@ -187,17 +195,7 @@ fn get_reserves(pair: &str, block_number: Option<u64>) -> Result<Reserves> {
 
     let reserve0 = u256_from_be_slice(&reserves_bytes[0..32]);
     let reserve1 = u256_from_be_slice(&reserves_bytes[32..64]);
-    let timestamp_value = u256_from_be_slice(&reserves_bytes[64..96]);
-    if timestamp_value > U256::from(u64::MAX) {
-        return Err(anyhow!("blockTimestampLast overflow"));
-    }
-    let block_timestamp_last = timestamp_value.as_u64();
-
-    Ok(Reserves {
-        reserve0,
-        reserve1,
-        block_timestamp_last,
-    })
+    Ok(Reserves { reserve0, reserve1 })
 }
 
 fn rpc_call(to: &str, data: &str, block_number: Option<u64>) -> Result<String> {
@@ -272,72 +270,6 @@ fn rpc_get_block_number() -> Result<u64> {
         .map_err(|_| anyhow!("Invalid block number"))
 }
 
-struct BlockInfo {
-    timestamp: u64,
-}
-
-fn rpc_get_block_by_number(block_number: u64) -> Result<BlockInfo> {
-    let body = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "eth_getBlockByNumber",
-        "params": [format!("0x{block_number:x}"), false]
-    });
-    let json_value = rpc_request(body)?;
-    let result = json_value
-        .get("result")
-        .ok_or_else(|| anyhow!("RPC response missing block"))?;
-    if result.is_null() {
-        return Err(anyhow!("Block not found"));
-    }
-    let timestamp = result
-        .get("timestamp")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| anyhow!("Block timestamp missing"))?;
-
-    Ok(BlockInfo {
-        timestamp: u64::from_str_radix(timestamp.trim_start_matches("0x"), 16)
-            .map_err(|_| anyhow!("Invalid block timestamp in response"))?,
-    })
-}
-
-fn find_block_by_timestamp(target_ts: u64, latest_block: u64) -> Result<u64> {
-    let mut low = 0u64;
-    let mut high = latest_block;
-    let mut best = 0u64;
-
-    for _ in 0..64 {
-        if low > high {
-            break;
-        }
-        let mid = (low + high) / 2;
-        let block = match rpc_get_block_by_number(mid) {
-            Ok(block) => block,
-            Err(err) => {
-                if err.to_string().contains("Block not found") {
-                    low = mid + 1;
-                    continue;
-                }
-                return Err(err);
-            }
-        };
-        if block.timestamp <= target_ts {
-            best = mid;
-            low = mid + 1;
-        } else {
-            if mid == 0 {
-                break;
-            }
-            high = mid - 1;
-        }
-    }
-
-    if best == 0 {
-        return Err(anyhow!("Failed to locate block for target timestamp"));
-    }
-
-    Ok(best)
-}
 
 fn parse_address_from_32byte(value: &str) -> Option<String> {
     let cleaned = value.strip_prefix("0x").unwrap_or(value);
@@ -406,40 +338,77 @@ fn liquidity_score(quote_reserve: U256) -> Result<u128> {
     Ok(score.as_u128())
 }
 
-fn freshness_score(now_ts: u64, last_update_ts: u64) -> Result<u128> {
-    let age = now_ts.saturating_sub(last_update_ts);
-    if age >= MAX_FRESHNESS_SECS {
-        return Ok(0);
+fn temporal_score(delta_1e6: u128) -> u128 {
+    if delta_1e6 >= DIVERGENCE_WARN_1E6 {
+        return 0;
     }
-    let remaining = MAX_FRESHNESS_SECS - age;
-    let score = (U256::from(remaining) * U256::from(SCALE)) / U256::from(MAX_FRESHNESS_SECS);
-    Ok(score.as_u128())
+    let penalty = (U256::from(delta_1e6) * U256::from(SCALE)) / U256::from(DIVERGENCE_WARN_1E6);
+    let score = U256::from(SCALE).saturating_sub(penalty);
+    score.as_u128()
 }
 
-fn combine_confidence(dispersion: u128, liquidity: u128, freshness: u128) -> u128 {
-    let mut value = U256::from(SCALE.saturating_sub(dispersion));
-    value = (value * U256::from(liquidity)) / U256::from(SCALE);
-    value = (value * U256::from(freshness)) / U256::from(SCALE);
-    value.as_u128()
-}
-
-fn max_safe_execution_size(quote_reserve: U256) -> Result<u128> {
-    let numerator = quote_reserve * U256::from(SLIPPAGE_FACTOR_NUM);
-    let value = numerator / U256::from(SLIPPAGE_FACTOR_DEN);
-    u256_to_u128(value)
-}
-
-fn should_alert(spot: u128, price_24h: u128, twap: u128) -> bool {
-    let spread_now = abs_diff_u128(spot, twap);
-    let spread_ratio = ratio_scaled_u128(spread_now, twap).unwrap_or(SCALE);
-    if spread_ratio > VOL_ALERT_SPOT_TWAP_BPS {
-        return true;
+fn max_safe_execution_size(
+    reserve_in: U256,
+    reserve_out: U256,
+    spot_1e6: u128,
+) -> Result<u128> {
+    if reserve_in.is_zero() || reserve_out.is_zero() {
+        return Err(anyhow!("Reserves are zero"));
     }
 
-    if price_24h == 0 {
-        return false;
+    let mut low = U256::zero();
+    let mut high = reserve_in / U256::from(2u8);
+    let mut best = U256::zero();
+
+    for _ in 0..28 {
+        let mid = (low + high) / U256::from(2u8);
+        if mid.is_zero() {
+            break;
+        }
+        let amount_out = amm_amount_out(mid, reserve_in, reserve_out)?;
+        if amount_out.is_zero() {
+            high = mid.saturating_sub(U256::from(1u8));
+            continue;
+        }
+
+        let effective_price = (mid * U256::from(1_000_000_000_000_000_000u128))
+            / amount_out;
+        let effective_price_u128 = u256_to_u128(effective_price)?;
+        let slippage = ratio_scaled_u128(
+            abs_diff_u128(effective_price_u128, spot_1e6),
+            spot_1e6,
+        )?;
+        if slippage < SLIPPAGE_LIMIT_1E6 {
+            best = mid;
+            low = mid + U256::from(1u8);
+        } else {
+            high = mid.saturating_sub(U256::from(1u8));
+        }
     }
-    let diff_24h = abs_diff_u128(spot, price_24h);
-    let diff_ratio = ratio_scaled_u128(diff_24h, price_24h).unwrap_or(SCALE);
-    diff_ratio > VOL_ALERT_24H_BPS
+
+    u256_to_u128(best)
+}
+
+fn amm_amount_out(amount_in: U256, reserve_in: U256, reserve_out: U256) -> Result<U256> {
+    let amount_in_with_fee = amount_in * U256::from(997u16);
+    let numerator = amount_in_with_fee * reserve_out;
+    let denominator = reserve_in * U256::from(1000u16) + amount_in_with_fee;
+    if denominator.is_zero() {
+        return Err(anyhow!("AMM denominator is zero"));
+    }
+    Ok(numerator / denominator)
+}
+
+fn build_flags(delta_1e6: u128, liquidity_score: u128, confidence_score: u128) -> u128 {
+    let mut flags = 0u128;
+    if delta_1e6 > DIVERGENCE_WARN_1E6 {
+        flags |= 1;
+    }
+    if liquidity_score < LIQUIDITY_WARN_SCORE {
+        flags |= 2;
+    }
+    if confidence_score < CONFIDENCE_WARN_SCORE {
+        flags |= 4;
+    }
+    flags
 }
