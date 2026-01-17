@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, Context};
 use ethabi::ethereum_types::U256;
 use seda_sdk_rs::{
     Process,
@@ -11,79 +11,83 @@ use seda_sdk_rs::{
 use serde::Deserialize;
 use serde_json::json;
 
-const DEFAULT_PAIR: &str = "WCRO-USDC";
 const RPC_URL: &str =
     "https://mainnet-sticky.cronoslabs.com/v1/d3642384d334ff6ff1c4baebfdf3ef7d";
 
 const SELECTOR_GET_RESERVES: &str = "0902f1ac";
-const SELECTOR_SLOT0: &str = "3850c7bd";
 const SELECTOR_TOKEN0: &str = "0dfe1681";
 
 const WCRO_ADDRESS: &str = "0x5C7F8A570d578ED84E63fdFA7b1eE72dEae1AE23";
 const USDC_ADDRESS: &str = "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59";
-const VVS_ADDRESS: &str = "0x2D03bECE6747ADC00E1a131BBA1469C15fD11e03";
-const WBTC_ADDRESS: &str = "0x062E66477Faf219F25D27dCED647BF57C3107d52";
-const WETH_ADDRESS: &str = "0xe44Fd7fCb2b1581822D0c862B68222998a0c299a";
-const USDT_ADDRESS: &str = "0x66e428c3f67a68878562e79A0234c1F83c208770";
-
 const WCRO_USDC_PAIR: &str = "0xE61Db569E231B3f5530168Aa2C9D50246525b6d6";
-const VVS_WCRO_PAIR: &str = "0xBf62c67EA509E86F07c8C69d0286C0636c50270B";
-const WBTC_WCRO_PAIR: &str = "0x8F09fff247B8FDb80461E5cf5E82dD1AE2ebd6d7";
-const WCRO_ETH_PAIR: &str = "0xA111C17F8b8303280d3EB01BbCd61000AA7f39f9";
-const USDT_USDC_V3_POOL: &str = "0x0438a75009519f6284fa9e050e54d940302b2e93";
+
+const SCALE: u128 = 1_000_000;
+const VOL_ALERT_SPOT_TWAP_BPS: u128 = 20_000;
+const VOL_ALERT_24H_BPS: u128 = 50_000;
+const MAX_FRESHNESS_SECS: u64 = 3600;
+const LIQUIDITY_TARGET_USDC_1E6: u128 = 1_000_000_000_000;
+const SLIPPAGE_FACTOR_NUM: u128 = 4_987_562_112;
+const SLIPPAGE_FACTOR_DEN: u128 = 1_000_000_000;
+const TARGET_PAIR: &str = "WCRO-USDC";
 
 pub fn execution_phase() -> Result<()> {
     let input = String::from_utf8(Process::get_inputs())?;
     let pair = parse_input_pair(&input)?;
+    log!("Requested pair: {pair}");
 
-    let pair_config = match pair.as_str() {
-        "WCRO-USDC" => PairConfig::v2(
-            WCRO_USDC_PAIR,
-            WCRO_ADDRESS,
-            USDC_ADDRESS,
-            18,
-            6,
-        ),
-        "VVS-WCRO" => PairConfig::v2(
-            VVS_WCRO_PAIR,
-            VVS_ADDRESS,
-            WCRO_ADDRESS,
-            18,
-            18,
-        ),
-        "WBTC-WCRO" => PairConfig::v2(
-            WBTC_WCRO_PAIR,
-            WBTC_ADDRESS,
-            WCRO_ADDRESS,
-            8,
-            18,
-        ),
-        "WCRO-ETH" => PairConfig::v2(
-            WCRO_ETH_PAIR,
-            WCRO_ADDRESS,
-            WETH_ADDRESS,
-            18,
-            18,
-        ),
-        "USDT-USDC" => PairConfig::v3(
-            USDT_USDC_V3_POOL,
-            USDT_ADDRESS,
-            USDC_ADDRESS,
-            6,
-            6,
-        ),
-        _ => return Err(anyhow!("Unsupported pair: {pair}")),
+    let pair_config = PairConfig {
+        pair: WCRO_USDC_PAIR,
+        base: WCRO_ADDRESS,
+        quote: USDC_ADDRESS,
+        base_decimals: 18,
+        quote_decimals: 6,
     };
 
-    let price_scaled = match pair_config {
-        PairConfig::V2(config) => price_from_v2(&config)?,
-        PairConfig::V3(config) => price_from_v3(&config)?,
-    };
+    let token0_result = rpc_call(pair_config.pair, SELECTOR_TOKEN0, None)?;
+    let token0 = parse_address_from_32byte(&token0_result)
+        .ok_or_else(|| anyhow!("Failed to parse token0 address"))?;
 
-    log!("Computed price (scaled 1e8): {price_scaled}");
-    Process::success(&price_scaled.to_le_bytes());
+    let latest_block = rpc_get_block_number()?;
+    let latest_block_info = rpc_get_block_by_number(latest_block)?;
+    let target_timestamp = latest_block_info.timestamp.saturating_sub(24 * 60 * 60);
+    let block_24h = find_block_by_timestamp(target_timestamp, latest_block)?;
+    let latest_reserves = get_reserves(pair_config.pair, Some(latest_block))?;
+    let spot_now = price_from_reserves(&pair_config, &token0, &latest_reserves)?;
 
-    Ok(())
+    let reserves_24h = get_reserves(pair_config.pair, Some(block_24h))?;
+    let price_24h = price_from_reserves(&pair_config, &token0, &reserves_24h)?;
+
+    let twap_price = (spot_now + price_24h) / 2;
+    let fair_price = (spot_now + twap_price) / 2;
+
+    let dispersion = ratio_scaled_u128(abs_diff_u128(spot_now, twap_price), spot_now)?;
+    let liquidity_score = liquidity_score(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
+    let freshness_score = freshness_score(latest_block_info.timestamp, latest_reserves.block_timestamp_last)?;
+    let confidence_score = combine_confidence(dispersion, liquidity_score, freshness_score);
+
+    let max_safe_execution_size = max_safe_execution_size(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
+
+    let volatility_alert = should_alert(spot_now, price_24h, twap_price);
+    let flags = if volatility_alert { 1u128 } else { 0u128 };
+
+    let values = vec![
+        U256::from(fair_price),
+        U256::from(confidence_score),
+        U256::from(max_safe_execution_size),
+        U256::from(flags),
+    ];
+
+    let encoded = ethabi::encode(&[ethabi::Token::Array(
+        values
+            .into_iter()
+            .map(ethabi::Token::Int)
+            .collect(),
+    )]);
+
+    log!(
+        "fair_price: {fair_price}, confidence: {confidence_score}, max_size: {max_safe_execution_size}, flags: {flags}"
+    );
+    Process::success(&encoded);
 }
 
 #[derive(Deserialize)]
@@ -91,7 +95,7 @@ struct OracleInput {
     pair: Option<String>,
 }
 
-struct V2Config {
+struct PairConfig {
     pair: &'static str,
     base: &'static str,
     quote: &'static str,
@@ -99,93 +103,48 @@ struct V2Config {
     quote_decimals: u8,
 }
 
-struct V3Config {
-    pool: &'static str,
-    base: &'static str,
-    quote: &'static str,
-    base_decimals: u8,
-    quote_decimals: u8,
-}
-
-enum PairConfig {
-    V2(V2Config),
-    V3(V3Config),
-}
-
-impl PairConfig {
-    fn v2(
-        pair: &'static str,
-        base: &'static str,
-        quote: &'static str,
-        base_decimals: u8,
-        quote_decimals: u8,
-    ) -> Self {
-        PairConfig::V2(V2Config {
-            pair,
-            base,
-            quote,
-            base_decimals,
-            quote_decimals,
-        })
-    }
-
-    fn v3(
-        pool: &'static str,
-        base: &'static str,
-        quote: &'static str,
-        base_decimals: u8,
-        quote_decimals: u8,
-    ) -> Self {
-        PairConfig::V3(V3Config {
-            pool,
-            base,
-            quote,
-            base_decimals,
-            quote_decimals,
-        })
-    }
-}
-
 fn parse_input_pair(input: &str) -> Result<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return Ok(DEFAULT_PAIR.to_string());
+        return Err(anyhow!("Missing input: pair required"));
     }
 
     let parsed: OracleInput = serde_json::from_str(trimmed)?;
     let pair = parsed
         .pair
-        .unwrap_or_else(|| DEFAULT_PAIR.to_string())
+        .context("Missing pair in input")?
         .to_uppercase();
 
-    match pair.as_str() {
-        "WCRO-USDC" | "VVS-WCRO" | "WBTC-WCRO" | "WCRO-ETH" | "USDT-USDC" => Ok(pair),
-        _ => Err(anyhow!("Unsupported pair: {pair}")),
+    if pair.as_str() != TARGET_PAIR {
+        return Err(anyhow!("Unsupported pair: {pair}"));
+    }
+
+    Ok(pair)
+}
+
+struct Reserves {
+    reserve0: U256,
+    reserve1: U256,
+    block_timestamp_last: u64,
+}
+
+impl Reserves {
+    fn quote_reserve(&self, token0: &str, config: &PairConfig) -> Result<U256> {
+        if token0.eq_ignore_ascii_case(config.base) {
+            Ok(self.reserve1)
+        } else if token0.eq_ignore_ascii_case(config.quote) {
+            Ok(self.reserve0)
+        } else {
+            Err(anyhow!("token0 mismatch for pair"))
+        }
     }
 }
 
-fn price_from_v2(config: &V2Config) -> Result<u128> {
-    let reserves_result = rpc_call(config.pair, SELECTOR_GET_RESERVES)?;
-    let reserves_bytes = hex_to_bytes(&reserves_result)
-        .ok_or_else(|| anyhow!("Failed to parse reserves hex"))?;
-    if reserves_bytes.len() < 64 {
-        return Err(anyhow!("Reserves result too short"));
-    }
-
-    let reserve0 = u256_from_be_slice(&reserves_bytes[0..32]);
-    let reserve1 = u256_from_be_slice(&reserves_bytes[32..64]);
-
-    let token0_result = rpc_call(config.pair, SELECTOR_TOKEN0)?;
-    let token0 = parse_address_from_32byte(&token0_result)
-        .ok_or_else(|| anyhow!("Failed to parse token0 address"))?;
-
-    let base = config.base.to_lowercase();
-    let quote = config.quote.to_lowercase();
-
-    let (base_reserve, quote_reserve) = if token0.eq_ignore_ascii_case(&base) {
-        (reserve0, reserve1)
-    } else if token0.eq_ignore_ascii_case(&quote) {
-        (reserve1, reserve0)
+fn price_from_reserves(config: &PairConfig, token0: &str, reserves: &Reserves) -> Result<u128> {
+    let (base_reserve, quote_reserve) = if token0.eq_ignore_ascii_case(config.base) {
+        (reserves.reserve0, reserves.reserve1)
+    } else if token0.eq_ignore_ascii_case(config.quote) {
+        (reserves.reserve1, reserves.reserve0)
     } else {
         return Err(anyhow!("token0 mismatch for pair"));
     };
@@ -194,64 +153,45 @@ fn price_from_v2(config: &V2Config) -> Result<u128> {
         return Err(anyhow!("Base reserve is zero"));
     }
 
-    // price_scaled = quote_reserve * 10^(base_decimals + 8) / (base_reserve * 10^quote_decimals)
-    let scale = pow10_u256(config.base_decimals as u32 + 8);
+    let scale = pow10_u256(config.base_decimals as u32);
     let quote_scale = pow10_u256(config.quote_decimals as u32);
-    let numerator = quote_reserve.saturating_mul(scale);
+    let numerator = quote_reserve
+        .saturating_mul(scale)
+        .saturating_mul(U256::from(SCALE));
     let denominator = base_reserve.saturating_mul(quote_scale);
     let price_scaled = numerator / denominator;
 
-    Ok(u256_to_u128(price_scaled)?)
+    u256_to_u128(price_scaled)
 }
 
-fn price_from_v3(config: &V3Config) -> Result<u128> {
-    let slot0_result = rpc_call(config.pool, SELECTOR_SLOT0)?;
-    let slot0_bytes = hex_to_bytes(&slot0_result)
-        .ok_or_else(|| anyhow!("Failed to parse slot0 hex"))?;
-    if slot0_bytes.len() < 32 {
-        return Err(anyhow!("slot0 result too short"));
+fn get_reserves(pair: &str, block_number: Option<u64>) -> Result<Reserves> {
+    let reserves_result = rpc_call(pair, SELECTOR_GET_RESERVES, block_number)?;
+    let reserves_bytes = hex_to_bytes(&reserves_result)
+        .ok_or_else(|| anyhow!("Failed to parse reserves hex"))?;
+    if reserves_bytes.len() < 96 {
+        return Err(anyhow!("Reserves result too short"));
     }
 
-    let sqrt_price_x96 = u256_from_be_slice(&slot0_bytes[0..32]);
-    let price_x192 = sqrt_price_x96.saturating_mul(sqrt_price_x96);
+    let reserve0 = u256_from_be_slice(&reserves_bytes[0..32]);
+    let reserve1 = u256_from_be_slice(&reserves_bytes[32..64]);
+    let timestamp_value = u256_from_be_slice(&reserves_bytes[64..96]);
+    if timestamp_value > U256::from(u64::MAX) {
+        return Err(anyhow!("blockTimestampLast overflow"));
+    }
+    let block_timestamp_last = timestamp_value.as_u64();
 
-    let token0_result = rpc_call(config.pool, SELECTOR_TOKEN0)?;
-    let token0 = parse_address_from_32byte(&token0_result)
-        .ok_or_else(|| anyhow!("Failed to parse token0 address"))?;
-
-    let base = config.base.to_lowercase();
-    let quote = config.quote.to_lowercase();
-
-    let q192 = U256::one() << 192;
-
-    let price_scaled = if token0.eq_ignore_ascii_case(&base) {
-        // price = token1/token0
-        // price_scaled = price * 10^8 * 10^dec0 / 10^dec1
-        let numerator = price_x192
-            .saturating_mul(pow10_u256(8))
-            .saturating_mul(pow10_u256(config.base_decimals as u32));
-        let denominator = q192.saturating_mul(pow10_u256(config.quote_decimals as u32));
-        numerator / denominator
-    } else if token0.eq_ignore_ascii_case(&quote) {
-        // price = token0/token1 = 1 / (token1/token0)
-        // price_scaled = 10^8 * 10^dec1 / 10^dec0 * 2^192 / price_x192
-        if price_x192.is_zero() {
-            return Err(anyhow!("Price is zero"));
-        }
-        let numerator = pow10_u256(8)
-            .saturating_mul(pow10_u256(config.quote_decimals as u32))
-            .saturating_mul(q192);
-        let denominator = pow10_u256(config.base_decimals as u32)
-            .saturating_mul(price_x192);
-        numerator / denominator
-    } else {
-        return Err(anyhow!("token0 mismatch for pool"));
-    };
-
-    Ok(u256_to_u128(price_scaled)?)
+    Ok(Reserves {
+        reserve0,
+        reserve1,
+        block_timestamp_last,
+    })
 }
 
-fn rpc_call(to: &str, data: &str) -> Result<String> {
+fn rpc_call(to: &str, data: &str, block_number: Option<u64>) -> Result<String> {
+    let block_tag = block_number
+        .map(|number| format!("0x{number:x}"))
+        .unwrap_or_else(|| "latest".to_string());
+
     let body = json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -261,10 +201,20 @@ fn rpc_call(to: &str, data: &str) -> Result<String> {
                 "to": to,
                 "data": format!("0x{data}"),
             },
-            "latest"
+            block_tag
         ]
     });
 
+    let json_value = rpc_request(body)?;
+    let result = json_value
+        .get("result")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("RPC response missing result"))?;
+
+    Ok(result.to_string())
+}
+
+fn rpc_request(body: serde_json::Value) -> Result<serde_json::Value> {
     let body_bytes = serde_json::to_vec(&body)?;
     let mut headers = std::collections::BTreeMap::new();
     headers.insert("Content-Type".to_string(), "application/json".to_string());
@@ -273,7 +223,7 @@ fn rpc_call(to: &str, data: &str) -> Result<String> {
         method: HttpFetchMethod::Post,
         headers,
         body: Some(body_bytes.to_bytes()),
-        timeout_ms: Some(5_000),
+        timeout_ms: Some(10_000),
     };
 
     let response = http_fetch(RPC_URL.to_string(), Some(options));
@@ -283,16 +233,82 @@ fn rpc_call(to: &str, data: &str) -> Result<String> {
             response.status,
             String::from_utf8(response.bytes)?
         );
-        return Err(anyhow!("RPC call failed"));
+        return Err(anyhow!("RPC request failed"));
     }
 
     let json_value: serde_json::Value = serde_json::from_slice(&response.bytes)?;
+    Ok(json_value)
+}
+
+fn rpc_get_block_number() -> Result<u64> {
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_blockNumber",
+        "params": []
+    });
+    let json_value = rpc_request(body)?;
     let result = json_value
         .get("result")
         .and_then(|value| value.as_str())
-        .ok_or_else(|| anyhow!("RPC response missing result"))?;
+        .ok_or_else(|| anyhow!("RPC response missing block number"))?;
+    u64::from_str_radix(result.trim_start_matches("0x"), 16)
+        .map_err(|_| anyhow!("Invalid block number"))
+}
 
-    Ok(result.to_string())
+struct BlockInfo {
+    timestamp: u64,
+}
+
+fn rpc_get_block_by_number(block_number: u64) -> Result<BlockInfo> {
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_getBlockByNumber",
+        "params": [format!("0x{block_number:x}"), false]
+    });
+    let json_value = rpc_request(body)?;
+    let result = json_value
+        .get("result")
+        .ok_or_else(|| anyhow!("RPC response missing block"))?;
+    let timestamp = result
+        .get("timestamp")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("Block timestamp missing"))?;
+
+    Ok(BlockInfo {
+        timestamp: u64::from_str_radix(timestamp.trim_start_matches("0x"), 16)
+            .map_err(|_| anyhow!("Invalid block timestamp in response"))?,
+    })
+}
+
+fn find_block_by_timestamp(target_ts: u64, latest_block: u64) -> Result<u64> {
+    let mut low = 0u64;
+    let mut high = latest_block;
+    let mut best = 0u64;
+
+    for _ in 0..64 {
+        if low > high {
+            break;
+        }
+        let mid = (low + high) / 2;
+        let block = rpc_get_block_by_number(mid)?;
+        if block.timestamp <= target_ts {
+            best = mid;
+            low = mid + 1;
+        } else {
+            if mid == 0 {
+                break;
+            }
+            high = mid - 1;
+        }
+    }
+
+    if best == 0 {
+        return Err(anyhow!("Failed to locate block for target timestamp"));
+    }
+
+    Ok(best)
 }
 
 fn parse_address_from_32byte(value: &str) -> Option<String> {
@@ -335,4 +351,67 @@ fn u256_to_u128(value: U256) -> Result<u128> {
         return Err(anyhow!("Value exceeds u128 range"));
     }
     Ok(value.as_u128())
+}
+
+fn abs_diff_u128(a: u128, b: u128) -> u128 {
+    if a >= b {
+        a - b
+    } else {
+        b - a
+    }
+}
+
+fn ratio_scaled_u128(numerator: u128, denominator: u128) -> Result<u128> {
+    if denominator == 0 {
+        return Err(anyhow!("Division by zero"));
+    }
+    let value = (U256::from(numerator) * U256::from(SCALE)) / U256::from(denominator);
+    Ok(std::cmp::min(value.as_u128(), SCALE))
+}
+
+fn liquidity_score(quote_reserve: U256) -> Result<u128> {
+    let target = U256::from(LIQUIDITY_TARGET_USDC_1E6);
+    if quote_reserve >= target {
+        return Ok(SCALE);
+    }
+    let score = (quote_reserve * U256::from(SCALE)) / target;
+    Ok(score.as_u128())
+}
+
+fn freshness_score(now_ts: u64, last_update_ts: u64) -> Result<u128> {
+    let age = now_ts.saturating_sub(last_update_ts);
+    if age >= MAX_FRESHNESS_SECS {
+        return Ok(0);
+    }
+    let remaining = MAX_FRESHNESS_SECS - age;
+    let score = (U256::from(remaining) * U256::from(SCALE)) / U256::from(MAX_FRESHNESS_SECS);
+    Ok(score.as_u128())
+}
+
+fn combine_confidence(dispersion: u128, liquidity: u128, freshness: u128) -> u128 {
+    let mut value = U256::from(SCALE.saturating_sub(dispersion));
+    value = (value * U256::from(liquidity)) / U256::from(SCALE);
+    value = (value * U256::from(freshness)) / U256::from(SCALE);
+    value.as_u128()
+}
+
+fn max_safe_execution_size(quote_reserve: U256) -> Result<u128> {
+    let numerator = quote_reserve * U256::from(SLIPPAGE_FACTOR_NUM);
+    let value = numerator / U256::from(SLIPPAGE_FACTOR_DEN);
+    u256_to_u128(value)
+}
+
+fn should_alert(spot: u128, price_24h: u128, twap: u128) -> bool {
+    let spread_now = abs_diff_u128(spot, twap);
+    let spread_ratio = ratio_scaled_u128(spread_now, twap).unwrap_or(SCALE);
+    if spread_ratio > VOL_ALERT_SPOT_TWAP_BPS {
+        return true;
+    }
+
+    if price_24h == 0 {
+        return false;
+    }
+    let diff_24h = abs_diff_u128(spot, price_24h);
+    let diff_ratio = ratio_scaled_u128(diff_24h, price_24h).unwrap_or(SCALE);
+    diff_ratio > VOL_ALERT_24H_BPS
 }

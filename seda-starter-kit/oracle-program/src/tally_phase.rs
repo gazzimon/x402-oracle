@@ -1,45 +1,82 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use ethabi::{Token, ethereum_types::U256};
 use seda_sdk_rs::{Process, elog, get_reveals, log};
 
 pub fn tally_phase() -> Result<()> {
     let reveals = get_reveals()?;
-
-    let mut prices: Vec<u128> = Vec::new();
+    let mut revealed_values: Vec<Vec<U256>> = Vec::new();
 
     for reveal in reveals {
-        let price_bytes_slice: [u8; 16] = match reveal.body.reveal.try_into() {
-            Ok(value) => value,
-            Err(_err) => {
-                elog!("Reveal body could not be cast to u128");
-                continue;
+        let decoded = decode_values(&reveal.body.reveal);
+        match decoded {
+            Ok(values) => {
+                log!("Received values: {:?}", values);
+                revealed_values.push(values);
             }
-        };
-
-        let price = u128::from_le_bytes(price_bytes_slice);
-        log!("Received price: {}", price);
-        prices.push(price);
+            Err(err) => {
+                elog!("Reveal decode failed: {err}");
+            }
+        }
     }
 
-    if prices.is_empty() {
+    if revealed_values.is_empty() {
         Process::error("No consensus among revealed results".as_bytes());
-        return Ok(());
     }
 
-    let final_price = median(prices);
-    let result = ethabi::encode(&[Token::Uint(U256::from(final_price))]);
+    let final_values = median_each_field(&revealed_values)?;
+    let result = ethabi::encode(&[Token::Array(
+        final_values
+            .into_iter()
+            .map(Token::Int)
+            .collect(),
+    )]);
     Process::success(&result);
-
-    Ok(())
 }
 
-fn median(mut nums: Vec<u128>) -> u128 {
-    nums.sort();
-    let middle = nums.len() / 2;
+fn decode_values(bytes: &[u8]) -> Result<Vec<U256>> {
+    let tokens = ethabi::decode(
+        &[ethabi::ParamType::Array(Box::new(ethabi::ParamType::Int(256)))],
+        bytes,
+    )?;
+    let array = match tokens.first() {
+        Some(Token::Array(values)) => values,
+        _ => return Err(anyhow!("Expected array token")),
+    };
+    if array.len() != 4 {
+        return Err(anyhow!("Expected 4 values, got {}", array.len()));
+    }
+    let mut values = Vec::with_capacity(array.len());
+    for token in array {
+        match token {
+            Token::Int(value) => values.push(*value),
+            _ => return Err(anyhow!("Expected int256 token")),
+        }
+    }
+    Ok(values)
+}
 
-    if nums.len().is_multiple_of(2) {
-        return (nums[middle - 1] + nums[middle]) / 2;
+fn median_each_field(values: &[Vec<U256>]) -> Result<Vec<U256>> {
+    if values.is_empty() {
+        return Err(anyhow!("No values to aggregate"));
+    }
+    if !values.iter().all(|row| row.len() == 4) {
+        return Err(anyhow!("Mismatched value length in reveals"));
     }
 
-    nums[middle]
+    let mut medians = Vec::with_capacity(4);
+    for idx in 0..4 {
+        let mut col: Vec<U256> = values.iter().map(|row| row[idx]).collect();
+        col.sort();
+        medians.push(median_sorted(&col));
+    }
+    Ok(medians)
+}
+
+fn median_sorted(values: &[U256]) -> U256 {
+    let mid = values.len() / 2;
+    if values.len() % 2 == 0 {
+        (values[mid - 1] + values[mid]) / U256::from(2u8)
+    } else {
+        values[mid]
+    }
 }
