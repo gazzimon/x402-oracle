@@ -219,6 +219,9 @@ fn rpc_call(to: &str, data: &str, block_number: Option<u64>) -> Result<String> {
     });
 
     let json_value = rpc_request(body)?;
+    if let Some(error) = json_value.get("error") {
+        return Err(anyhow!("RPC error: {error}"));
+    }
     let result = json_value
         .get("result")
         .and_then(|value| value.as_str())
