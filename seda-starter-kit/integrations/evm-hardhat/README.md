@@ -8,7 +8,7 @@
   SEDA Hardhat Integration
 </h1>
 
-A TypeScript-based starter kit for connecting SEDA Oracle Programs to EVM-compatible blockchains using Hardhat. This integration features a **PriceFeed contract** that demonstrates how to create and retrieve data requests from the SEDA network.
+A TypeScript-based starter kit for connecting SEDA Oracle Programs to EVM-compatible blockchains using Hardhat. This integration features a **PriceFeed contract** and a **Cronos relayer consumer** example.
 
 > [!IMPORTANT]
 > The **PriceFeed contract is an example** designed for educational purposes. It demonstrates basic SEDA integration patterns but should be modified for production use.
@@ -81,6 +81,37 @@ bunx hardhat pricefeed transmit --network baseSepolia
 ```sh
 bunx hardhat pricefeed latest --network baseSepolia
 ```
+
+## Cronos (Relayer-based Consumer)
+
+Cronos does not have an official SEDA Core deployment, so use the relayer + consumer flow.
+
+### 1. Deploy the Consumer Contract
+
+Deploy `SEDAOracleConsumer.sol` to Cronos and set:
+
+- `oracleProgramId` = your SEDA oracle program id (bytes32)
+- `relayer` = the relayer EVM address that will submit results
+
+### 2. Configure the Relayer
+
+Set env vars in `seda-starter-kit/relayer/.env` or export them before running:
+
+- `SEDA_API_URL`
+- `ORACLE_PROGRAM_ID`
+- `CRONOS_RPC_URL`
+- `CONSUMER_ADDRESS`
+- `RELAYER_PRIVATE_KEY`
+
+### 3. Run the Relayer
+
+```sh
+cd ../../relayer
+bun install
+bun run src/index.ts --once
+```
+
+The relayer decodes the SEDA result as `int256[4]` and submits it to the consumer.
 
 ## Project Structure
 

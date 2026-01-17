@@ -21,11 +21,11 @@ contract SEDAOracleConsumer {
     /// @notice Contract owner
     address public owner;
 
-    /// @notice Latest value per pair (scaled uint)
-    mapping(bytes32 => uint256) public prices;
+    /// @notice Latest values per pair (int256[4], 1e6 scale)
+    mapping(bytes32 => int256[4]) public latestByPair;
 
-    /// @notice Last update timestamp per pair
-    mapping(bytes32 => uint256) public lastUpdate;
+    /// @notice Latest request id per pair
+    mapping(bytes32 => bytes32) public lastRequestIdByPair;
 
     /// @notice Request ids already processed
     mapping(bytes32 => bool) public seenRequest;
@@ -35,7 +35,7 @@ contract SEDAOracleConsumer {
     error InvalidProof();
     error AlreadyProcessed();
 
-    event ResultSubmitted(bytes32 indexed requestId, bytes32 indexed pair, uint256 value);
+    event ResultSubmitted(bytes32 indexed requestId, bytes32 indexed pair, int256[4] values);
     event RelayerUpdated(address indexed relayer);
 
     constructor(bytes32 _oracleProgramId, address _relayer) {
@@ -54,10 +54,14 @@ contract SEDAOracleConsumer {
      * @notice Submit a relayed result.
      * @dev `sedaProof` is expected to be abi.encode(oracleProgramId) for MVP.
      */
+    /// values[0] = fair_price (1e6)
+    /// values[1] = confidence_score (1e6)
+    /// values[2] = max_safe_execution_size (1e6)
+    /// values[3] = flags (bitmask: bit0 = CRITICAL_DIVERGENCE, bit1 = LOW_LIQUIDITY, bit2 = UNSAFE_CONFIDENCE)
     function submitResult(
         bytes32 requestId,
         bytes32 pair,
-        uint256 value,
+        int256[4] calldata values,
         bytes calldata sedaProof
     ) external {
         if (msg.sender != relayer) revert NotRelayer();
@@ -69,13 +73,17 @@ contract SEDAOracleConsumer {
         }
 
         seenRequest[requestId] = true;
-        prices[pair] = value;
-        lastUpdate[pair] = block.timestamp;
+        latestByPair[pair] = values;
+        lastRequestIdByPair[pair] = requestId;
 
-        emit ResultSubmitted(requestId, pair, value);
+        emit ResultSubmitted(requestId, pair, values);
     }
 
-    function getPrice(bytes32 pair) external view returns (uint256) {
-        return prices[pair];
+    function getLatest(bytes32 pair) external view returns (int256[4] memory) {
+        return latestByPair[pair];
+    }
+
+    function getLatestRequestId(bytes32 pair) external view returns (bytes32) {
+        return lastRequestIdByPair[pair];
     }
 }

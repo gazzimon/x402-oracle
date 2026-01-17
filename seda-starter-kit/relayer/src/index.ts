@@ -58,7 +58,7 @@ const ONESHOT =
   process.env.ONESHOT === 'true' || hasArg('--once') || Boolean(DR_ID) || Boolean(DR_RESULT);
 
 const consumerAbi = [
-  'function submitResult(bytes32 requestId, bytes32 pair, uint256 value, bytes sedaProof)',
+  'function submitResult(bytes32 requestId, bytes32 pair, int256[4] values, bytes sedaProof)',
 ];
 
 function loadState(): RelayerState {
@@ -118,14 +118,66 @@ function stripHexPrefix(value: string): string {
   return value.startsWith('0x') ? value.slice(2) : value;
 }
 
-async function fetchRequests(): Promise<ExplorerRequest[]> {
-  const url = new URL(SEDA_API_URL);
-  if (!url.searchParams.has('limit')) {
-    url.searchParams.set('limit', String(DR_LIMIT));
+function decodeResultArray(resultHex: string, coder: ethers.AbiCoder): bigint[] {
+  const decoded = coder.decode(['int256[]'], resultHex);
+  const rawValues = decoded[0] as readonly bigint[];
+  const values = Array.from(rawValues);
+  if (values.length !== 4) {
+    throw new Error(`Expected 4 values, got ${values.length}`);
   }
+  return values;
+}
+
+function normalizeResult(result: string): string {
+  const trimmed = result.trim();
+  if (trimmed.startsWith('0x')) {
+    return trimmed;
+  }
+  if (/^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length % 2 === 0) {
+    return `0x${trimmed}`;
+  }
+  const bytes = Buffer.from(trimmed, 'base64');
+  return `0x${bytes.toString('hex')}`;
+}
+
+async function fetchRequests(): Promise<ExplorerRequest[]> {
+  const baseUrl = new URL(SEDA_API_URL);
+  if (!baseUrl.searchParams.has('limit')) {
+    baseUrl.searchParams.set('limit', String(DR_LIMIT));
+  }
+
+  const attempts: URL[] = [new URL(baseUrl.toString())];
+  if (!baseUrl.searchParams.has('format')) {
+    const withFormat = new URL(baseUrl.toString());
+    withFormat.searchParams.set('format', 'json');
+    attempts.push(withFormat);
+  }
+  if (!baseUrl.searchParams.has('json')) {
+    const withJson = new URL(baseUrl.toString());
+    withJson.searchParams.set('json', '1');
+    attempts.push(withJson);
+  }
+
+  let lastError: Error | null = null;
+  for (const url of attempts) {
+    try {
+      return await fetchJson(url);
+    } catch (err) {
+      lastError = err as Error;
+    }
+  }
+
+  throw lastError ?? new Error('Explorer fetch failed');
+}
+
+async function fetchJson(url: URL): Promise<ExplorerRequest[]> {
   const response = await fetch(url, {
     headers: {
-      Accept: 'application/json'
+      Accept: 'application/json, text/plain, */*',
+      'User-Agent': 'Mozilla/5.0 (x402-relayer)',
+      Referer: 'https://testnet.explorer.seda.xyz/',
+      Origin: 'https://testnet.explorer.seda.xyz',
+      'Cache-Control': 'no-cache'
     }
   });
   if (!response.ok) {
@@ -134,9 +186,13 @@ async function fetchRequests(): Promise<ExplorerRequest[]> {
   const contentType = response.headers.get('content-type') ?? '';
   const text = await response.text();
   if (!contentType.includes('application/json')) {
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      return normalizeRequests(JSON.parse(trimmed));
+    }
     const snippet = text.slice(0, 120).replace(/\s+/g, ' ');
     throw new Error(
-      `Explorer returned non-JSON response. Check SEDA_API_URL (expected /api/data-requests). Body: ${snippet}`,
+      `Explorer returned non-JSON response (url: ${response.url}). Check SEDA_API_URL. Body: ${snippet}`,
     );
   }
   const payload = JSON.parse(text);
@@ -169,11 +225,12 @@ async function main() {
     const pair = DR_PAIR || decodeExecInputs(req.execInputs) || 'WCRO-USDC';
     const pairHash = ethers.keccak256(ethers.toUtf8Bytes(pair));
 
-    const value = BigInt(result.startsWith('0x') ? result : `0x${result}`);
-    console.log(`Relaying ${pair} (${requestId}) = ${value.toString()}`);
+    const resultHex = normalizeResult(result);
+    const values = decodeResultArray(resultHex, coder);
+    console.log(`Relaying ${pair} (${requestId}) = [${values.join(', ')}]`);
 
     const requestIdHex = normalizeHex(requestId);
-    const tx = await consumer.submitResult(requestIdHex, pairHash, value, proof);
+    const tx = await consumer.submitResult(requestIdHex, pairHash, values, proof);
     console.log(`Submitted tx: ${tx.hash}`);
     await tx.wait();
 
