@@ -16,8 +16,8 @@ const SEDA_STARTER_KIT_PATH =
   process.env.SEDA_STARTER_KIT_PATH ?? path.resolve(process.cwd(), '../../seda-starter-kit');
 
 const consumerAbi = [
-  'function prices(bytes32) view returns (uint256)',
-  'function lastUpdate(bytes32) view returns (uint256)',
+  'function getLatest(bytes32) view returns (int256[4])',
+  'function getLatestRequestId(bytes32) view returns (bytes32)',
 ];
 
 type RelayerState = {
@@ -132,15 +132,16 @@ export class ResourceService {
   async getSecretPayload(pair: string) {
     const consumer = this.getConsumer();
     const pairKey = ethers.keccak256(ethers.toUtf8Bytes(pair));
-    const [price, lastUpdate] = await Promise.all([
-      consumer.prices(pairKey),
-      consumer.lastUpdate(pairKey),
+    const [values, requestIdOnChain] = await Promise.all([
+      consumer.getLatest(pairKey),
+      consumer.getLatestRequestId(pairKey),
     ]);
 
-    const scaled = BigInt(price.toString());
+    const parsedValues = (values as bigint[]).map((value) => BigInt(value.toString()));
+    const [fairPrice, confidence, maxSize, flags] = parsedValues;
     const state = loadRelayerState();
     const meta = state.lastByPair?.[pair];
-    const drId = meta?.requestId ?? '';
+    const drId = meta?.requestId ?? stripHexPrefix(requestIdOnChain?.toString?.() ?? '');
     const drBlockHeight = meta?.drBlockHeight ?? null;
     const sedaExplorerUrl =
       drId && drBlockHeight
@@ -150,10 +151,14 @@ export class ResourceService {
     return {
       ok: true,
       pair,
-      priceScaled: scaled.toString(),
-      price: formatScaled(scaled, 8),
-      decimals: 8,
-      lastUpdate: lastUpdate.toString(),
+      fairPriceScaled: fairPrice.toString(),
+      fairPrice: formatScaled(fairPrice, 6),
+      confidenceScoreScaled: confidence.toString(),
+      confidenceScore: formatScaled(confidence, 6),
+      maxSafeExecutionSizeScaled: maxSize.toString(),
+      maxSafeExecutionSize: formatScaled(maxSize, 6),
+      flags: flags.toString(),
+      decimals: 6,
       sedaExplorerUrl,
       sedaRequestId: drId || null,
       cronosTxHash: meta?.txHash ?? null,
@@ -195,4 +200,8 @@ export class ResourceService {
     }
     return result;
   }
+}
+
+function stripHexPrefix(value: string): string {
+  return value.startsWith('0x') ? value.slice(2) : value;
 }

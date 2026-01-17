@@ -101,7 +101,10 @@ export function useX402Flow(options: UseX402FlowOptions): UseX402FlowResult {
       obj.sedaRequestId,
       obj.relayedAt,
       obj.cronosTxHash,
-      obj.lastUpdate,
+      obj.fairPriceScaled,
+      obj.confidenceScoreScaled,
+      obj.maxSafeExecutionSizeScaled,
+      obj.flags,
     ]
       .filter(Boolean)
       .map(String);

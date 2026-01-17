@@ -42,10 +42,7 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
   const { status, data, paymentId, isBusy, fetchSecret, retryWithPaymentId } = useX402Flow({
     apiBase: props.apiBase,
   });
-  const pairs = useMemo(
-    () => ['USDT-USDC', 'WCRO-USDC', 'VVS-WCRO', 'WBTC-WCRO', 'WCRO-ETH'],
-    []
-  );
+  const pairs = useMemo(() => ['WCRO-USDC'], []);
   const [pair, setPair] = useState<string>(pairs[0] ?? '');
 
   const payload = useMemo(() => {
@@ -53,10 +50,16 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
     try {
       return JSON.parse(data) as {
         pair?: string;
-        price?: string;
-        priceScaled?: string;
+        fairPrice?: string;
+        fairPriceScaled?: string;
+        confidenceScore?: string;
+        confidenceScoreScaled?: string;
+        maxSafeExecutionSize?: string;
+        maxSafeExecutionSizeScaled?: string;
+        flags?: string;
         sedaExplorerUrl?: string | null;
         cronosTxHash?: string | null;
+        sedaRequestId?: string | null;
       };
     } catch {
       return null;
@@ -64,7 +67,7 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
   }, [data]);
 
   const cronosLink = payload?.cronosTxHash
-    ? `https://testnet.cronoscan.com/tx/${payload.cronosTxHash}`
+    ? `https://explorer.cronos.org/testnet/tx/${payload.cronosTxHash}`
     : null;
 
   const activeStep = useMemo(() => {
@@ -126,7 +129,7 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
           <PairInput
             value={pair}
             onChange={(event) => setPair(event.target.value.toUpperCase())}
-            placeholder="Custom pair, e.g. WBTC-CRO"
+            placeholder="WCRO-USDC only (MVP)"
           />
 
           <ButtonRow>
@@ -157,8 +160,20 @@ export function ResourceContainer(props: ResourceContainerProps): JSX.Element {
                 <MetaValue>{payload?.pair ?? pair}</MetaValue>
               </MetaItem>
               <MetaItem>
-                <MetaKey>Price</MetaKey>
-                <MetaValue>{payload?.price ?? '--'}</MetaValue>
+                <MetaKey>Fair Price</MetaKey>
+                <MetaValue>{payload?.fairPrice ?? '--'}</MetaValue>
+              </MetaItem>
+              <MetaItem>
+                <MetaKey>Confidence</MetaKey>
+                <MetaValue>{payload?.confidenceScore ?? '--'}</MetaValue>
+              </MetaItem>
+              <MetaItem>
+                <MetaKey>Max Size</MetaKey>
+                <MetaValue>{payload?.maxSafeExecutionSize ?? '--'}</MetaValue>
+              </MetaItem>
+              <MetaItem>
+                <MetaKey>Flags</MetaKey>
+                <MetaValue>{payload?.flags ?? '--'}</MetaValue>
               </MetaItem>
               <MetaItem>
                 <MetaKey>SEDA</MetaKey>
