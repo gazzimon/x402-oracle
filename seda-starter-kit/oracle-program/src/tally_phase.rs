@@ -3,6 +3,15 @@ use ethabi::{Token, ethereum_types::U256};
 use seda_sdk_rs::{Process, elog, get_reveals, log};
 
 pub fn tally_phase() -> Result<()> {
+    if let Err(err) = tally_phase_inner() {
+        elog!("Tally error: {err}");
+        Process::error(format!("Tally error: {err}").as_bytes());
+    }
+
+    Ok(())
+}
+
+fn tally_phase_inner() -> Result<()> {
     let reveals = get_reveals()?;
     let mut revealed_values: Vec<Vec<U256>> = Vec::new();
 

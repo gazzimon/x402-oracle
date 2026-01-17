@@ -31,6 +31,15 @@ const SLIPPAGE_FACTOR_DEN: u128 = 1_000_000_000;
 const TARGET_PAIR: &str = "WCRO-USDC";
 
 pub fn execution_phase() -> Result<()> {
+    if let Err(err) = execution_phase_inner() {
+        elog!("Execution error: {err}");
+        Process::error(format!("Execution error: {err}").as_bytes());
+    }
+
+    Ok(())
+}
+
+fn execution_phase_inner() -> Result<()> {
     let input = String::from_utf8(Process::get_inputs())?;
     let pair = parse_input_pair(&input)?;
     log!("Requested pair: {pair}");
@@ -62,10 +71,14 @@ pub fn execution_phase() -> Result<()> {
 
     let dispersion = ratio_scaled_u128(abs_diff_u128(spot_now, twap_price), spot_now)?;
     let liquidity_score = liquidity_score(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
-    let freshness_score = freshness_score(latest_block_info.timestamp, latest_reserves.block_timestamp_last)?;
+    let freshness_score = freshness_score(
+        latest_block_info.timestamp,
+        latest_reserves.block_timestamp_last,
+    )?;
     let confidence_score = combine_confidence(dispersion, liquidity_score, freshness_score);
 
-    let max_safe_execution_size = max_safe_execution_size(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
+    let max_safe_execution_size =
+        max_safe_execution_size(latest_reserves.quote_reserve(&token0, &pair_config)?)?;
 
     let volatility_alert = should_alert(spot_now, price_24h, twap_price);
     let flags = if volatility_alert { 1u128 } else { 0u128 };
@@ -271,6 +284,9 @@ fn rpc_get_block_by_number(block_number: u64) -> Result<BlockInfo> {
     let result = json_value
         .get("result")
         .ok_or_else(|| anyhow!("RPC response missing block"))?;
+    if result.is_null() {
+        return Err(anyhow!("Block not found"));
+    }
     let timestamp = result
         .get("timestamp")
         .and_then(|value| value.as_str())
@@ -292,7 +308,16 @@ fn find_block_by_timestamp(target_ts: u64, latest_block: u64) -> Result<u64> {
             break;
         }
         let mid = (low + high) / 2;
-        let block = rpc_get_block_by_number(mid)?;
+        let block = match rpc_get_block_by_number(mid) {
+            Ok(block) => block,
+            Err(err) => {
+                if err.to_string().contains("Block not found") {
+                    low = mid + 1;
+                    continue;
+                }
+                return Err(err);
+            }
+        };
         if block.timestamp <= target_ts {
             best = mid;
             low = mid + 1;

@@ -1,9 +1,9 @@
 import { afterEach, describe, it, expect, mock } from "bun:test";
 import { file } from "bun";
-import { testOracleProgramExecution, testOracleProgramTally } from "@seda-protocol/dev-tools"
-import { BigNumber } from 'bignumber.js'
+import { testOracleProgramExecution, testOracleProgramTally } from "@seda-protocol/dev-tools";
 
-const WASM_PATH = "target/wasm32-wasip1/release-wasm/oracle-program.wasm";
+const WASM_PATH =
+  "oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm";
 
 const fetchMock = mock();
 
@@ -12,35 +12,87 @@ afterEach(() => {
 });
 
 describe("data request execution", () => {
-  it("should aggregate the results from the different APIs", async () => {
-    fetchMock.mockImplementation((url) => {
-      if (url.host === "api.binance.com") {
-        return new Response(JSON.stringify({ price: "2452.30000" }));
+  it("should return an int256[4] array for WCRO-USDC", async () => {
+    fetchMock.mockImplementation((_url, options) => {
+      const body = options?.body ? JSON.parse(options.body.toString()) : {};
+      const method = body.method;
+      const params = body.params ?? [];
+
+      if (method === "eth_blockNumber") {
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x2710" }));
       }
 
-      return new Response('Unknown request');
+      if (method === "eth_getBlockByNumber") {
+        const blockHex = params[0] as string;
+        const blockNumber = parseInt(blockHex.replace("0x", ""), 16);
+        const timestamp = blockNumber * 10;
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: { timestamp: `0x${timestamp.toString(16)}` },
+          })
+        );
+      }
+
+      if (method === "eth_call") {
+        const call = params[0] ?? {};
+        const data = (call.data as string) ?? "";
+        if (data.toLowerCase() === "0x0dfe1681") {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result:
+                "0x0000000000000000000000005c7f8a570d578ed84e63fdfa7b1ee72deae1ae23",
+            })
+          );
+        }
+        if (data.toLowerCase() === "0x0902f1ac") {
+          const reserve0 = toHex32(1_000_000_000_000_000_000n);
+          const reserve1 = toHex32(1_000_000_000_000n);
+          const timestamp = toHex32(100_000n);
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              result: `0x${reserve0}${reserve1}${timestamp}`,
+            })
+          );
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, error: { message: "Unknown request" } })
+      );
     });
 
     const oracleProgram = await file(WASM_PATH).arrayBuffer();
 
     const vmResult = await testOracleProgramExecution(
       Buffer.from(oracleProgram),
-      Buffer.from("eth-usdc"),
+      Buffer.from('{"pair":"WCRO-USDC"}'),
       fetchMock
     );
 
     expect(vmResult.exitCode).toBe(0);
-    // BigNumber.js is big endian
-    const hex = Buffer.from(vmResult.result.toReversed()).toString('hex');
-    const result = BigNumber(`0x${hex}`);
-    expect(result).toEqual(BigNumber('2452300032'));
+    const values = decodeInt256ArrayAbi(vmResult.result);
+    const expectedMaxSize =
+      (1_000_000_000_000n * 4_987_562_112n) / 1_000_000_000n;
+    expect(values).toEqual([1_000_000_000_000n, 1_000_000n, expectedMaxSize, 0n]);
   });
 
   it('should tally all results in a single data point', async () => {
     const oracleProgram = await file(WASM_PATH).arrayBuffer();
 
-    // Result from the execution test
-    let buffer = Buffer.from([0, 33, 43, 146, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const expectedMaxSize =
+      (1_000_000_000_000n * 4_987_562_112n) / 1_000_000_000n;
+    const buffer = encodeInt256ArrayAbi([
+      1_000_000n,
+      1_000_000n,
+      expectedMaxSize,
+      0n,
+    ]);
     const vmResult = await testOracleProgramTally(Buffer.from(oracleProgram), Buffer.from('tally-inputs'), [{
       exitCode: 0,
       gasUsed: 0,
@@ -49,8 +101,40 @@ describe("data request execution", () => {
     }]);
 
     expect(vmResult.exitCode).toBe(0);
-    const hex = Buffer.from(vmResult.result).toString('hex');
-    const result = BigNumber(`0x${hex}`);
-    expect(result).toEqual(BigNumber('2452300032'));
+    const values = decodeInt256ArrayAbi(vmResult.result);
+    expect(values).toEqual([1_000_000n, 1_000_000n, expectedMaxSize, 0n]);
   });
 });
+
+function toHex32(value: bigint): string {
+  return value.toString(16).padStart(64, "0");
+}
+
+function encodeInt256ArrayAbi(values: bigint[]): Buffer {
+  const offset = toHex32(32n);
+  const length = toHex32(BigInt(values.length));
+  const items = values.map((value) => {
+    const asUint = value < 0n ? (1n << 256n) + value : value;
+    return toHex32(asUint);
+  });
+  return Buffer.from(`${offset}${length}${items.join("")}`, "hex");
+}
+
+function decodeInt256ArrayAbi(bytes: Uint8Array): bigint[] {
+  const hex = Buffer.from(bytes).toString("hex");
+  const words = hex.match(/.{1,64}/g) ?? [];
+  if (words.length < 2) {
+    throw new Error("Invalid ABI payload");
+  }
+  const offset = parseInt(words[0], 16) / 32;
+  const length = parseInt(words[offset], 16);
+  const result: bigint[] = [];
+  for (let i = 0; i < length; i += 1) {
+    const raw = words[offset + 1 + i];
+    const value = BigInt(`0x${raw}`);
+    const signBit = 1n << 255n;
+    const signed = value & signBit ? value - (1n << 256n) : value;
+    result.push(signed);
+  }
+  return result;
+}
