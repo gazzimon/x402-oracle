@@ -7,22 +7,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="images/logo_transparent.png" sizes="any">
+    <link rel="shortcut icon" type="image/png" href="images/logo_transparent.png">
+    <link rel="apple-touch-icon" href="images/logo_transparent.png">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- Background Network Animation -->
     <canvas id="network-canvas"></canvas>
     <div class="video-wall" aria-hidden="true">
-        <video muted playsinline preload="auto">
+        <video muted playsinline autoplay preload="auto">
             <source src="/video/01.mp4" type="video/mp4">
         </video>
-        <video muted playsinline preload="metadata">
+        <video muted playsinline autoplay preload="metadata">
             <source src="/video/02.mp4" type="video/mp4">
         </video>
-        <video muted playsinline preload="metadata">
+        <video muted playsinline autoplay preload="metadata">
             <source src="/video/03.mp4" type="video/mp4">
         </video>
-        <video muted playsinline preload="metadata">
+        <video muted playsinline autoplay preload="metadata">
             <source src="/video/04.mp4" type="video/mp4">
         </video>
     </div>
@@ -31,18 +34,7 @@
     <nav class="navbar" id="navbar">
         <div class="nav-container">
             <div class="nav-logo">
-                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                    <circle cx="16" cy="16" r="14" stroke="url(#logo-gradient)" stroke-width="2"/>
-                    <path d="M16 8L16 16L22 22" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round"/>
-                    <circle cx="16" cy="16" r="3" fill="url(#logo-gradient)"/>
-                    <defs>
-                        <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stop-color="#00ff9d"/>
-                            <stop offset="100%" stop-color="#3b82f6"/>
-                        </linearGradient>
-                    </defs>
-                </svg>
-                <span>x402-oracle</span>
+                <img class="brand-logo" src="images/logo_transparent.png" alt="x402-oracle logo">
             </div>
             <ul class="nav-links">
                 <li><a href="#problem">Problem</a></li>
@@ -63,7 +55,7 @@
         <div class="hero-content">
             <div class="hero-badge">x402 Hackathon Submission</div>
             <h1 class="hero-title">
-                <span class="title-line">x402-oracle</span>
+                <img class="hero-wordmark" src="images/text-x402_transparent.png" alt="x402-oracle">
                 <span class="title-subtitle">Programmable, Paid Oracles for Cronos</span>
             </h1>
             <p class="hero-description">
@@ -624,18 +616,8 @@
         <div class="footer-content">
             <div class="footer-brand">
                 <div class="footer-logo">
-                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                        <circle cx="16" cy="16" r="14" stroke="url(#footer-logo-gradient)" stroke-width="2"/>
-                        <path d="M16 8L16 16L22 22" stroke="url(#footer-logo-gradient)" stroke-width="2" stroke-linecap="round"/>
-                        <circle cx="16" cy="16" r="3" fill="url(#footer-logo-gradient)"/>
-                        <defs>
-                            <linearGradient id="footer-logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#00ff9d"/>
-                                <stop offset="100%" stop-color="#3b82f6"/>
-                            </linearGradient>
-                        </defs>
-                    </svg>
-                    <span>x402-oracle</span>
+                    <img class="brand-logo" src="images/logo_transparent.png" alt="x402-oracle logo">
+                    <img class="brand-wordmark" src="images/text-x402_transparent.png" alt="x402-oracle">
                 </div>
                 <p class="footer-tagline">Programmable Paid Oracles for Cronos</p>
             </div>

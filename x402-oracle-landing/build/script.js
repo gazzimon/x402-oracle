@@ -521,6 +521,7 @@ class VideoWall {
             return;
         }
         this.currentIndex = 0;
+        this.gestureBound = false;
         this.setupVideos();
         this.bindEvents();
         this.playCurrent();
@@ -530,23 +531,34 @@ class VideoWall {
         this.videos.forEach((video, index) => {
             video.loop = false;
             video.muted = true;
+            video.setAttribute('muted', '');
             video.playsInline = true;
-            video.defaultPlaybackRate = 2;
-            video.playbackRate = 2;
-            if (index !== 0) {
-                video.preload = 'metadata';
-            }
+            video.setAttribute('playsinline', '');
+            video.setAttribute('autoplay', '');
+            video.defaultPlaybackRate = 3;
+            video.playbackRate = 3;
+            video.preload = 'auto';
         });
-        if (this.videos[0]) {
-            this.videos[0].preload = 'auto';
-            this.videos[0].load();
-        }
+        this.videos.forEach(video => video.load());
     }
 
     bindEvents() {
         this.videos.forEach((video, index) => {
             video.addEventListener('ended', () => {
                 if (index === this.currentIndex) {
+                    this.next();
+                }
+            });
+            video.addEventListener('canplay', () => {
+                if (index === this.currentIndex && video.paused) {
+                    video.play().catch(() => this.bindUserGesture());
+                }
+            });
+            video.addEventListener('timeupdate', () => {
+                if (index !== this.currentIndex) {
+                    return;
+                }
+                if (video.duration && video.currentTime >= video.duration - 0.1) {
                     this.next();
                 }
             });
@@ -587,7 +599,7 @@ class VideoWall {
                 }
                 const playPromise = video.play();
                 if (playPromise && typeof playPromise.catch === 'function') {
-                    playPromise.catch(() => {});
+                    playPromise.catch(() => this.bindUserGesture());
                 }
             } else {
                 video.pause();
@@ -595,6 +607,21 @@ class VideoWall {
             }
         });
         this.primeNext();
+    }
+
+    bindUserGesture() {
+        if (this.gestureBound) {
+            return;
+        }
+        this.gestureBound = true;
+        const resume = () => {
+            const current = this.videos[this.currentIndex];
+            if (current) {
+                current.play().catch(() => {});
+            }
+        };
+        window.addEventListener('pointerdown', resume, { once: true });
+        window.addEventListener('touchstart', resume, { once: true });
     }
 
     next() {
