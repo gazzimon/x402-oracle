@@ -409,7 +409,7 @@ class ArchitectureFlow {
 // ========================================
 class HeroAnimation {
     constructor() {
-        this.heroTitle = document.querySelector('.title-line');
+        this.heroTitle = document.querySelector('.hero-wordmark') || document.querySelector('.title-line');
         this.heroSubtitle = document.querySelector('.title-subtitle');
         this.init();
     }
@@ -421,8 +421,11 @@ class HeroAnimation {
     }
 
     animateTitle() {
-        // Title is already animated via CSS, but we can add JS effects
         const title = this.heroTitle;
+        if (!title) {
+            return;
+        }
+        // Title is already animated via CSS, but we can add JS effects
         title.style.opacity = '0';
         title.style.transform = 'translateY(30px)';
 
