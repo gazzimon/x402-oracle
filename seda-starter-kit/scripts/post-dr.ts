@@ -33,7 +33,16 @@ async function main() {
         tallyGasLimit,
     };
 
-    const result = await postAndAwaitDataRequest(signer, dataRequestInput, {});
+    const timeoutSeconds = process.env.POST_DR_TIMEOUT_SECONDS
+        ? parseInt(process.env.POST_DR_TIMEOUT_SECONDS, 10)
+        : 180;
+    const pollingIntervalSeconds = process.env.POST_DR_POLLING_INTERVAL_SECONDS
+        ? parseInt(process.env.POST_DR_POLLING_INTERVAL_SECONDS, 10)
+        : 10;
+    const result = await postAndAwaitDataRequest(signer, dataRequestInput, {
+        timeoutSeconds,
+        pollingIntervalSeconds,
+    });
     const explorerLink = process.env.SEDA_EXPLORER_URL ? process.env.SEDA_EXPLORER_URL + `/data-requests/${result.drId}/${result.drBlockHeight}` : "Configure env.SEDA_EXPLORER_URL to generate a link to your DR";
 
     console.table({

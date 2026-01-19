@@ -53,25 +53,25 @@ function extractPairFromRequirements(paymentRequirements: PaymentRequirements): 
   }
 }
 
-function runPostDrRelay(pair: string): Promise<void> {
+function runPostDr(pair: string): Promise<void> {
   const env = { ...process.env, EXEC_INPUTS: JSON.stringify({ pair }) };
   return new Promise((resolve, reject) => {
-    console.info('[x402] post-dr-relay start', {
+    console.info('[x402] post-dr start', {
       pair,
       cwd: SEDA_STARTER_KIT_PATH,
       execInputs: env.EXEC_INPUTS,
       relayerStatePath: RELAYER_STATE_PATH,
     });
-    const proc = spawn('bun', ['run', 'post-dr-relay'], {
+    const proc = spawn('bun', ['run', 'post-dr'], {
       cwd: SEDA_STARTER_KIT_PATH,
       env,
       stdio: 'inherit',
     });
     proc.on('error', reject);
     proc.on('exit', (code) => {
-      console.info('[x402] post-dr-relay exit', { pair, code });
+      console.info('[x402] post-dr exit', { pair, code });
       if (code === 0) resolve();
-      else reject(new Error(`post-dr-relay failed with exit code ${code ?? 'unknown'}`));
+      else reject(new Error(`post-dr failed with exit code ${code ?? 'unknown'}`));
     });
   });
 }
@@ -195,7 +195,7 @@ export class ResourceService {
       const pair = extractPairFromRequirements(params.paymentRequirements);
       console.info('[x402] derived pair', { pair });
       if (pair) {
-        await runPostDrRelay(pair);
+        await runPostDr(pair);
       }
     }
     return result;

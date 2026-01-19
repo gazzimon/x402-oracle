@@ -33,7 +33,16 @@ async function main() {
     tallyGasLimit
   };
 
-  const result = await postAndAwaitDataRequest(signer, dataRequestInput, {});
+  const timeoutSeconds = process.env.POST_DR_TIMEOUT_SECONDS
+    ? parseInt(process.env.POST_DR_TIMEOUT_SECONDS, 10)
+    : 180;
+  const pollingIntervalSeconds = process.env.POST_DR_POLLING_INTERVAL_SECONDS
+    ? parseInt(process.env.POST_DR_POLLING_INTERVAL_SECONDS, 10)
+    : 10;
+  const result = await postAndAwaitDataRequest(signer, dataRequestInput, {
+    timeoutSeconds,
+    pollingIntervalSeconds
+  });
   const explorerLink = process.env.SEDA_EXPLORER_URL
     ? process.env.SEDA_EXPLORER_URL + `/data-requests/${result.drId}/${result.drBlockHeight}`
     : 'Configure env.SEDA_EXPLORER_URL to generate a link to your DR';
@@ -63,7 +72,9 @@ async function main() {
     // Use default pair if exec inputs are not JSON.
   }
 
-  const proc = Bun.spawn(
+  const drBlockHeight = result.drBlockHeight?.toString() ?? '';
+
+  const proposeProc = Bun.spawn(
     [
       'bun',
       'run',
@@ -72,12 +83,13 @@ async function main() {
       '--dr-id',
       result.drId,
       '--dr-block-height',
-      result.drBlockHeight?.toString() ?? '',
+      drBlockHeight,
       '--dr-result',
       result.result,
       '--pair',
       pair,
-      '--once'
+      '--once',
+      '--propose-only'
     ],
     {
       cwd: relayerDir,
@@ -85,9 +97,43 @@ async function main() {
       stderr: 'inherit'
     }
   );
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    throw new Error(`Relayer failed with exit code ${exitCode}`);
+  const proposeExitCode = await proposeProc.exited;
+  if (proposeExitCode !== 0) {
+    throw new Error(`Relayer propose failed with exit code ${proposeExitCode}`);
+  }
+
+  const finalizeDelaySeconds = process.env.RELAYER_FINALIZE_DELAY_SECONDS
+    ? parseInt(process.env.RELAYER_FINALIZE_DELAY_SECONDS, 10)
+    : 90;
+  console.log(`Waiting ${finalizeDelaySeconds}s before finalize...`);
+  await new Promise((resolve) => setTimeout(resolve, finalizeDelaySeconds * 1000));
+
+  const finalizeProc = Bun.spawn(
+    [
+      'bun',
+      'run',
+      'dev',
+      '--',
+      '--dr-id',
+      result.drId,
+      '--dr-block-height',
+      drBlockHeight,
+      '--dr-result',
+      result.result,
+      '--pair',
+      pair,
+      '--once',
+      '--finalize-only'
+    ],
+    {
+      cwd: relayerDir,
+      stdout: 'inherit',
+      stderr: 'inherit'
+    }
+  );
+  const finalizeExitCode = await finalizeProc.exited;
+  if (finalizeExitCode !== 0) {
+    throw new Error(`Relayer finalize failed with exit code ${finalizeExitCode}`);
   }
 }
 
