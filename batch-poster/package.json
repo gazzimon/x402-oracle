@@ -1,0 +1,17 @@
+{
+  "name": "batch-poster",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "post:batches": "bun src/postBatches.ts",
+    "post:results": "bun src/postResults.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

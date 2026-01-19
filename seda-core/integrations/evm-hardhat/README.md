@@ -82,18 +82,28 @@ bunx hardhat pricefeed transmit --network baseSepolia
 bunx hardhat pricefeed latest --network baseSepolia
 ```
 
-## Cronos (Relayer-based Consumer)
+## Cronos (Testnet Core + Prover)
 
-Cronos does not have an official SEDA Core deployment, so use the relayer + consumer flow.
+Cronos testnet now has a SEDA Core + Prover deployment. You can use the standard
+PriceFeed flow or the relayer-based consumer (if you want direct explorer polling).
 
-### 1. Deploy the Consumer Contract
+**Cronos testnet core (proxy):** `0xBaB85A4ED8F27135883cd7ED90e93c040C14B16D`
+
+### 1. Deploy the PriceFeed or Consumer Contract
+
+**PriceFeed (recommended):**
+```sh
+bunx hardhat pricefeed deploy --network cronosTestnet --force
+```
+
+**Consumer (relayer-based):**
 
 Deploy `SEDAOracleConsumer.sol` to Cronos and set:
 
 - `oracleProgramId` = your SEDA oracle program id (bytes32)
 - `relayer` = the relayer EVM address that will submit results
 
-### 2. Configure the Relayer
+### 2. Configure the Relayer (optional)
 
 Set env vars in `seda-starter-kit/relayer/.env` or export them before running:
 
