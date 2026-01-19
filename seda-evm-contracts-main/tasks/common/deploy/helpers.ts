@@ -1,0 +1,212 @@
+import type { Signer } from 'ethers';
+import type { HardhatRuntimeEnvironment } from 'hardhat/types';
+import * as v from 'valibot';
+
+import { CONFIG } from '../config';
+import { pathExists, prompt } from '../io';
+import { logger } from '../logger';
+import { readParams } from '../params';
+import { getNetworkKey } from '../utils';
+import { deployProxyContract, type UupsContracts, upgradeProxyContract } from './proxy';
+import { updateAddressesFile, updateDeployment } from './reports';
+
+/**
+ * Reads parameters from a file, validates them against a schema, and logs the results.
+ * This is typically used to ensure contract constructor arguments meet expected format and constraints
+ * before deployment.
+ */
+export async function readAndValidateParams<TInput, TOutput>(
+  paramsFileOrObject: string | object,
+  contractKey: string,
+  schema: v.BaseSchema<TInput, TOutput, v.BaseIssue<unknown>>,
+): Promise<TOutput> {
+  let deployParams: TOutput;
+
+  if (typeof paramsFileOrObject === 'string') {
+    // Contract Parameters from file
+    logger.section('Contract Parameters', 'params');
+    logger.info(`Using parameters file: ${paramsFileOrObject}`);
+    deployParams = await readParams(paramsFileOrObject, contractKey, schema);
+  } else {
+    // Direct object parameters
+    logger.section('Contract Parameters', 'params');
+    logger.info('Using direct parameter object');
+    deployParams = v.parse(schema, paramsFileOrObject);
+  }
+
+  logger.info(`Deployment Params: \n  ${JSON.stringify(deployParams, null, 2).replace(/\n/g, '\n  ')}`);
+
+  return deployParams;
+}
+
+/**
+ * Pretty prints constructor arguments with custom formatting.
+ */
+export function logConstructorArgs(infoText: string, params: object): void {
+  logger.section('Contract Parameters', 'params');
+  logger.info(infoText);
+  logger.info(`Deployment Params: \n  ${JSON.stringify(params, null, 2).replace(/\n/g, '\n  ')}`);
+}
+
+/**
+ * Safety check to prevent accidental deployments to already deployed networks.
+ * If deployments already exist for the target network, requires explicit user confirmation
+ * unless the reset flag is set to true.
+ */
+export async function confirmDeployment(networkKey: string, reset: boolean | undefined): Promise<void> {
+  if (!reset && (await pathExists(`${CONFIG.DEPLOYMENTS.FOLDER}/${networkKey}`))) {
+    const confirmation = await prompt(`Deployments folder for ${networkKey} already exists. Type "yes" to continue: `);
+    if (confirmation !== 'yes') {
+      logger.error('Deployment aborted.');
+      throw new Error('Deployment aborted: User cancelled the operation');
+    }
+  }
+}
+
+/**
+ * Handles the complete proxy contract deployment workflow:
+ * 1. Deploys implementation contract
+ * 2. Deploys proxy contract pointing to the implementation
+ * 3. Updates deployment records and address files
+ * 4. Optionally verifies contracts on block explorer
+ * Returns both proxy and implementation addresses
+ */
+export async function deployAndVerifyContractWithProxy<T extends keyof UupsContracts>(
+  hre: HardhatRuntimeEnvironment,
+  contractName: T,
+  constructorArgs: UupsContracts[T]['constructorArgs'],
+  owner: Signer,
+  verify: boolean | undefined,
+): Promise<{ contractAddress: string; contractImplAddress: string }> {
+  // Deploy
+  logger.section('Deploying Contracts', 'deploy');
+  const { contract, contractImplAddress } = await deployProxyContract(hre, contractName, constructorArgs, owner);
+  const contractAddress = await contract.getAddress();
+  logger.success(`Proxy address: ${contractAddress}`);
+  logger.success(`Impl. address: ${contractImplAddress}`);
+
+  // Update deployment files (if not local hardhat)
+  if (hre.network.name !== 'hardhat') {
+    logger.section('Updating Deployment Files', 'files');
+    const networkKey = await getNetworkKey(hre);
+    await updateDeployment(hre, contractName);
+    await updateAddressesFile(networkKey, contractName, {
+      proxy: contractAddress,
+      implementation: contractImplAddress,
+    });
+    if (verify) {
+      await verifyContract(hre, contractAddress);
+    }
+  }
+
+  return { contractAddress, contractImplAddress };
+}
+
+/**
+ * Handles the complete contract upgrade workflow:
+ * 1. Confirms deployment configuration and user approval
+ * 2. Upgrades the proxy implementation contract
+ * 3. Updates deployment records and address files
+ * Returns the new implementation address
+ */
+export async function upgradeAndVerifyContractWithProxy(
+  hre: HardhatRuntimeEnvironment,
+  proxyAddress: string,
+  contractName: string,
+  owner: Signer,
+): Promise<{ contractImplAddress: string }> {
+  // Deploy
+  logger.section('Upgrading Contract', 'deploy');
+  const { contractImplAddress } = await upgradeProxyContract(hre, proxyAddress, contractName, owner);
+  logger.success(`Proxy address: ${proxyAddress}`);
+  logger.success(`Impl. address: ${contractImplAddress}`);
+
+  // Update deployment files (if not local hardhat)
+  if (hre.network.name !== 'hardhat') {
+    logger.section('Updating Deployment Files', 'files');
+    const networkKey = await getNetworkKey(hre);
+    await updateDeployment(hre, contractName);
+    await updateAddressesFile(networkKey, contractName, {
+      proxy: proxyAddress,
+      implementation: contractImplAddress,
+    });
+  }
+
+  return { contractImplAddress };
+}
+
+/**
+ * Attempts to verify contract source code on the network's block explorer (e.g., Etherscan).
+ * Handles common verification scenarios including:
+ * - Already verified contracts
+ * - Failed verifications with detailed error reporting
+ */
+export async function verifyContract(hre: HardhatRuntimeEnvironment, address: string) {
+  logger.section('Verifying Contracts', 'verify');
+  logger.info(`Waiting ${CONFIG.SLEEP_TIME_IN_SECONDS}s for indexing before verification...`);
+  await new Promise((resolve) => setTimeout(resolve, CONFIG.SLEEP_TIME_IN_SECONDS * 1000));
+  try {
+    await hre.run('verify:verify', {
+      address,
+    });
+    logger.success('Contract verified successfully');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Already Verified')) {
+      logger.info('Contract is already verified on block explorer');
+    } else {
+      logger.warn(`Verification failed: ${error}`);
+    }
+  }
+}
+
+/**
+ * Outputs essential deployment context including:
+ * - Target network and chain ID
+ * - Deployer address and balance
+ * - Contract being deployed
+ */
+export async function logDeploymentConfig(hre: HardhatRuntimeEnvironment, contractName: string, owner: Signer) {
+  const address = await owner.getAddress();
+
+  logger.section('Deployment Configuration', 'config');
+  logger.info(`Contract: ${contractName}`);
+  logger.info(`Network:  ${hre.network.name}`);
+  logger.info(`Chain ID: ${hre.network.config.chainId}`);
+  const balance = hre.ethers.formatEther(owner.provider ? await owner.provider.getBalance(address) : '?');
+  logger.info(`Deployer: ${address} (${balance} ETH)`);
+}
+
+/**
+ * Handles the complete standard contract deployment workflow:
+ * 1. Deploys contract with provided constructor arguments
+ * 2. Updates deployment records and address files
+ * 3. Optionally verifies contract on block explorer
+ * Similar to deployAndVerifyContractWithProxy but for non-proxy contracts
+ */
+export async function deployAndVerifyContract(
+  hre: HardhatRuntimeEnvironment,
+  contractName: string,
+  constructorArgs: unknown[],
+  verify: boolean | undefined,
+): Promise<{ contractAddress: string }> {
+  // Deploy
+  logger.section('Deploying Contracts', 'deploy');
+  const factory = await hre.ethers.getContractFactory(contractName);
+  const contract = await factory.deploy(...constructorArgs);
+  await contract.waitForDeployment();
+  const contractAddress = await contract.getAddress();
+  logger.success(`Contract address: ${contractAddress}`);
+
+  // Update deployment files
+  logger.section('Updating Deployment Files', 'files');
+  const networkKey = await getNetworkKey(hre);
+  await updateDeployment(hre, contractName);
+  await updateAddressesFile(networkKey, contractName, contractAddress);
+
+  if (verify) {
+    await verifyContract(hre, contractAddress);
+  }
+
+  return { contractAddress };
+}

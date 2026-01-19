@@ -1,0 +1,54 @@
+name: "⚡ Push"
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  checks:
+    name: "🔍 Checks"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Check out the repo 📥"
+        uses: "actions/checkout@v4"
+
+      - name: "Install Bun 🥟"
+        uses: "oven-sh/setup-bun@v1"
+
+      - name: "Install the dependencies 📦"
+        run: "bun install"
+
+      - name: "Lint TypeScript & Solidity 🧹"
+        run: "bun run check"
+
+      - name: "Compile the contracts 🛠️"
+        run: "bun run compile"
+
+      - name: "Run tests with coverage 🧪"
+        run: |
+          bun run test:coverage > coverage-report.txt
+          cat coverage-report.txt
+
+      - name: "Prepare coverage report markdown 📝"
+        if: github.event_name == 'pull_request'
+        run: |
+          {
+            echo "## Test Coverage Report"
+            echo ""
+            echo "| File | % Stmts | % Branch | % Funcs | % Lines | Uncovered Lines |"
+            echo "|:-----|----------|----------|----------|----------|----------------|"
+            awk '/^-+\|/,/^-+\|$/' coverage-report.txt | 
+            grep -v '^-' | grep -v '^|$' | grep -v '^File' | grep -v 'Istanbul' | 
+            sed 's/^| //; s/ |$//; s/ | /|/g; s/^All files/**All files**/'
+            echo ""
+          } > code-coverage-results.md
+
+      - name: "Add Coverage PR Comment 💬"
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: code-coverage-results.md

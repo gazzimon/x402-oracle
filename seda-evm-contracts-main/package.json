@@ -1,0 +1,69 @@
+{
+  "name": "@seda-protocol/evm",
+  "version": "1.0.0",
+  "description": "EVM smart contracts enabling any blockchain to connect with the SEDA decentralized network",
+  "keywords": [
+    "ethereum",
+    "evm",
+    "oracle",
+    "seda",
+    "smart-contracts",
+    "solidity",
+    "cross-chain"
+  ],
+  "author": "SEDA Protocol <info@seda.xyz>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sedaprotocol/seda-evm-contracts.git"
+  },
+  "scripts": {
+    "check": "bun run lint && bun run format:sol",
+    "clean": "rimraf artifacts cache typechain-types coverage",
+    "compile": "hardhat compile",
+    "format:sol": "prettier --check \"**/*.sol\"",
+    "format:sol:fix": "prettier --write \"**/*.sol\"",
+    "gen:testvectors": "hardhat run scripts/generateTestVectors.ts",
+    "lint": "bun run lint:ts && bun run lint:sol",
+    "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore",
+    "lint:sol:fix": "solhint 'contracts/**/*.sol' --fix --ignore-path .solhintignore",
+    "lint:ts": "bunx biome check .",
+    "lint:ts:fix": "bunx biome check --write .",
+    "prepublish": "bun run clean && bun run compile",
+    "seda": "hardhat seda",
+    "test": "hardhat test --grep \"^(?!.*[Gg]as.*[Aa]nalysis).*$\"",
+    "test:coverage": "COVERAGE=true hardhat coverage",
+    "test:deployments": "hardhat run scripts/testDeployments.ts",
+    "test:gas": "REPORT_GAS=true hardhat test --grep \"[Gg]as.*[Aa]nalysis\""
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.4.0",
+    "@openzeppelin/contracts-upgradeable": "5.4.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.1.2",
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@nomicfoundation/hardhat-verify": "^2.1.0",
+    "@openzeppelin/hardhat-upgrades": "^3.9.1",
+    "@openzeppelin/merkle-tree": "^1.0.8",
+    "dotenv": "^17.2.0",
+    "@dotenvx/dotenvx": "^1.49.0",
+    "hardhat": "^2.26.1",
+    "prettier": "^3.6.2",
+    "prettier-plugin-solidity": "^2.1.0",
+    "rimraf": "^6.0.1",
+    "solhint": "^6.0.0",
+    "valibot": "^1.1.0"
+  },
+  "files": [
+    "/artifacts/contracts/**/*.json",
+    "!/artifacts/contracts/**/*.dbg.json",
+    "!/artifacts/contracts/test/**/*",
+    "/contracts/**/*.sol",
+    "!/contracts/test/**/*",
+    "/typechain-types/**/*.d.ts",
+    "/typechain-types/**/*.ts",
+    "!/typechain-types/contracts/test/**/*",
+    "!/typechain-types/factories/contracts/test/**/*"
+  ]
+}
