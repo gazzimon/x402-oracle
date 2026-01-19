@@ -174,4 +174,14 @@ export const networks: Networks = {
       browserUrl: 'https://explorer-sepolia-superseed-826s35710w.t.conduit.xyz',
     },
   },
+  cronosTestnet: {
+    accounts: 'EVM_PRIVATE_KEY',
+    chainId: 338,
+    url: 'https://evm-t3.cronos.org',
+    etherscan: {
+      apiKey: 'CRONOSCAN_API_KEY',
+      apiUrl: 'https://api-testnet.cronoscan.com/api',
+      browserUrl: 'https://explorer.cronos.org/testnet',
+    },
+  },
 };

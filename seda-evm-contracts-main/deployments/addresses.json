@@ -1,0 +1,22 @@
+{
+  "cronosTestnet-338": {
+    "SedaFeeManager": {
+      "address": "0x1f50ddA97b3420861076e3B509107ff64694123c",
+      "gitCommitHash": "e0f0eb4a33c9fdb2789f61160c75dff43b0d9cff"
+    },
+    "Secp256k1ProverV1": {
+      "address": {
+        "proxy": "0x101868e3aE4186336634573dbb8d261416C1B2fa",
+        "implementation": "0x6Bf2BCc89681b74093c88fD482fF2f5e2B3cD6b3"
+      },
+      "gitCommitHash": "e0f0eb4a33c9fdb2789f61160c75dff43b0d9cff"
+    },
+    "SedaCoreV1": {
+      "address": {
+        "proxy": "0xBaB85A4ED8F27135883cd7ED90e93c040C14B16D",
+        "implementation": "0x4315179B09A30Cb60db8484fc273AEf8E4Ac34F4"
+      },
+      "gitCommitHash": "e0f0eb4a33c9fdb2789f61160c75dff43b0d9cff"
+    }
+  }
+}
