@@ -7,6 +7,7 @@
     "build": "cargo build --manifest-path oracle-program/Cargo.toml --target wasm32-wasip1 --profile release-wasm && wasm-strip oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm && wasm-opt -Oz --enable-bulk-memory oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm -o oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm",
     "deploy": "bun run build && bunx seda-sdk oracle-program upload ./oracle-program/target/wasm32-wasip1/release-wasm/vvs-wcro-usdc-oracle.wasm",
     "post-dr": "bun run ./scripts/post-dr.ts",
+    "await-dr": "bun run ./scripts/await-dr.ts",
     "post-dr-relay": "bun run ./scripts/post-dr-and-relay.ts",
     "test": "bun test tests/ src/ --ignore='integrations/evm-foundry/lib/**'"
   },

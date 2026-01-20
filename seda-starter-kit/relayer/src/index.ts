@@ -65,6 +65,7 @@ const DR_BLOCK_HEIGHT_RAW = process.env.DR_BLOCK_HEIGHT ?? getArgValue('--dr-blo
 const DR_BLOCK_HEIGHT = DR_BLOCK_HEIGHT_RAW ? parseInt(DR_BLOCK_HEIGHT_RAW, 10) : undefined;
 const PROPOSE_ONLY = process.env.PROPOSE_ONLY === 'true' || hasArg('--propose-only');
 const FINALIZE_ONLY = process.env.FINALIZE_ONLY === 'true' || hasArg('--finalize-only');
+const DEBUG_RELAYER = process.env.DEBUG_RELAYER === 'true' || hasArg('--debug');
 const ONESHOT =
   process.env.ONESHOT === 'true' || hasArg('--once') || Boolean(DR_ID) || Boolean(DR_RESULT);
 
@@ -89,6 +90,15 @@ function loadState(): RelayerState {
 
 function saveState(state: RelayerState) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+}
+
+function debugLog(message: string, meta?: Record<string, unknown>) {
+  if (!DEBUG_RELAYER) return;
+  if (meta) {
+    console.info('[relayer:debug]', message, meta);
+  } else {
+    console.info('[relayer:debug]', message);
+  }
 }
 
 function normalizeRequests(payload: unknown): ExplorerRequest[] {
@@ -253,8 +263,29 @@ function buildSedaRef(requestId: string, req: ExplorerRequest): Uint8Array {
   return ethers.toUtf8Bytes(ref);
 }
 
+function normalizeCosmwasmRequest(payload: unknown): ExplorerRequest | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const data = (payload as Record<string, unknown>).data as Record<string, unknown> | null | undefined;
+  if (!data || typeof data !== 'object') return null;
+  const reveals = (data as Record<string, unknown>).reveals;
+  const extracted = extractRevealResult(reveals);
+  return {
+    drId: typeof data.id === 'string' ? data.id : undefined,
+    execProgramId: typeof data.exec_program_id === 'string' ? data.exec_program_id : undefined,
+    execInputs: typeof data.exec_inputs === 'string' ? data.exec_inputs : undefined,
+    drBlockHeight: typeof data.height === 'number' ? data.height : undefined,
+    result: extracted.result,
+    exitCode: extracted.exitCode,
+    consensus: extracted.consensus,
+  } satisfies ExplorerRequest;
+}
+
 async function fetchRequests(): Promise<ExplorerRequest[]> {
   if (SEDA_COSMWASM_REST_URL && SEDA_CORE_CONTRACT) {
+    if (DR_ID) {
+      const direct = await fetchCosmwasmRequestById(DR_ID);
+      if (direct) return [direct];
+    }
     return await fetchCosmwasmRequests();
   }
 
@@ -287,6 +318,31 @@ async function fetchRequests(): Promise<ExplorerRequest[]> {
   throw lastError ?? new Error('Explorer fetch failed');
 }
 
+async function fetchCosmwasmRequestById(drId: string): Promise<ExplorerRequest | null> {
+  const base = SEDA_COSMWASM_REST_URL.replace(/\/+$/u, '');
+  const query = { get_data_request: { dr_id: stripHexPrefix(drId) } };
+  const encoded = base64EncodeJson(query);
+  const url = new URL(
+    `${base}/cosmwasm/wasm/v1/contract/${SEDA_CORE_CONTRACT}/smart/${encoded}`,
+  );
+  debugLog('cosmwasm dr query', { drId });
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      'User-Agent': 'Mozilla/5.0 (x402-relayer)',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`CosmWasm dr fetch failed: ${response.status}`);
+  }
+  const payload = (await response.json()) as unknown;
+  const normalized = normalizeCosmwasmRequest(payload);
+  if (!normalized) {
+    debugLog('cosmwasm dr not found', { drId });
+  }
+  return normalized;
+}
+
 async function fetchCosmwasmRequests(): Promise<ExplorerRequest[]> {
   const base = SEDA_COSMWASM_REST_URL.replace(/\/+$/u, '');
   const results: ExplorerRequest[] = [];
@@ -295,6 +351,7 @@ async function fetchCosmwasmRequests(): Promise<ExplorerRequest[]> {
     let lastSeenIndex: string | null = null;
     let pageCount = 0;
 
+    debugLog('cosmwasm status query', { status, limit: DR_LIMIT });
     do {
       const query: Record<string, unknown> = {
         get_data_requests_by_status: {
@@ -322,12 +379,14 @@ async function fetchCosmwasmRequests(): Promise<ExplorerRequest[]> {
 
       const data = (payload as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
       lastSeenIndex = typeof data?.last_seen_index === 'string' ? data.last_seen_index : null;
+      debugLog('cosmwasm page', { status, count: normalized.length, lastSeenIndex });
       pageCount += 1;
       if (!normalized.length || !lastSeenIndex) break;
       if (pageCount > 10) break;
     } while (lastSeenIndex);
   }
 
+  debugLog('cosmwasm total', { count: results.length });
   return results;
 }
 
@@ -379,11 +438,27 @@ async function main() {
   const relayRequest = async (req: ExplorerRequest) => {
     const requestId = req.drId ?? req.requestId;
     const execProgramId = (req.execProgramId ?? '').toLowerCase();
+    const shouldDebug = DR_ID ? requestId === DR_ID : execProgramId === ORACLE_PROGRAM_ID;
+    const skip = (reason: string) => {
+      if (DEBUG_RELAYER && shouldDebug) {
+        debugLog('skip request', { requestId, execProgramId, reason });
+      }
+      return false;
+    };
     if (!requestId || execProgramId !== ORACLE_PROGRAM_ID) return false;
     if (DR_ID && requestId !== DR_ID) return false;
 
     const { result, exitCode, consensus } = extractResult(req);
-    if (!result || exitCode !== 0) return false;
+    if (DEBUG_RELAYER && shouldDebug) {
+      debugLog('candidate request', {
+        requestId,
+        execProgramId,
+        hasResult: Boolean(result),
+        exitCode,
+        consensus,
+      });
+    }
+    if (!result || exitCode !== 0) return skip('missing-result-or-exitcode');
     let finalizeTxHash: string | undefined;
 
     const pair = DR_PAIR || decodeExecInputs(req.execInputs) || 'WCRO-USDC';
@@ -411,7 +486,7 @@ async function main() {
 
     if (PROPOSE_ONLY) return proposedSent;
     if (state.processed[requestId]) return false;
-    if (consensus !== true && consensus !== false) return false;
+    if (consensus !== true && consensus !== false) return skip('missing-consensus');
 
     console.log(`Finalizing ${pair} (${requestId}) = [${values.join(', ')}] (consensus: ${consensus})`);
     const sedaRef = buildSedaRef(requestId, req);
@@ -446,6 +521,7 @@ async function main() {
 
   const tick = async () => {
     const requests = await fetchRequests();
+    debugLog('tick', { requests: requests.length, drId: DR_ID || null });
     let matched = false;
     let relayed = 0;
     for (const req of requests) {

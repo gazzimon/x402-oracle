@@ -1,5 +1,7 @@
-import { PostDataRequestInput, Signer, buildSigningConfig, postAndAwaitDataRequest } from '@seda-protocol/dev-tools';
+import { PostDataRequestInput, Signer, buildSigningConfig, postDataRequest } from '@seda-protocol/dev-tools';
 import dotenv from 'dotenv';
+import fs from 'node:fs';
+import path from 'node:path';
 
 async function main() {
     dotenv.config();
@@ -11,7 +13,7 @@ async function main() {
     const signingConfig = buildSigningConfig({});
     const signer = await Signer.fromPartial(signingConfig);
 
-    console.log('Posting and waiting for a result, this may take a little while..');
+    console.log('Posting DR (no await).');
 
     const execInputs = process.env.EXEC_INPUTS ?? '';
     const execGasLimit = process.env.EXEC_GAS_LIMIT
@@ -33,78 +35,27 @@ async function main() {
         tallyGasLimit,
     };
 
-    const timeoutSeconds = process.env.POST_DR_TIMEOUT_SECONDS
-        ? parseInt(process.env.POST_DR_TIMEOUT_SECONDS, 10)
-        : 180;
-    const pollingIntervalSeconds = process.env.POST_DR_POLLING_INTERVAL_SECONDS
-        ? parseInt(process.env.POST_DR_POLLING_INTERVAL_SECONDS, 10)
-        : 10;
-    const result = await postAndAwaitDataRequest(signer, dataRequestInput, {
-        timeoutSeconds,
-        pollingIntervalSeconds,
-    });
-    const explorerLink = process.env.SEDA_EXPLORER_URL ? process.env.SEDA_EXPLORER_URL + `/data-requests/${result.drId}/${result.drBlockHeight}` : "Configure env.SEDA_EXPLORER_URL to generate a link to your DR";
+    const response = await postDataRequest(signer, dataRequestInput, {});
+    const drId = response.dr?.id ?? '';
+    const drBlockHeight = response.dr?.height ?? null;
+    const drMetaPath = path.resolve(process.cwd(), '.last-dr.json');
+    if (drId && drBlockHeight) {
+        fs.writeFileSync(
+            drMetaPath,
+            JSON.stringify({ drId, drBlockHeight: drBlockHeight.toString() }, null, 2)
+        );
+    }
+    const explorerLink = process.env.SEDA_EXPLORER_URL
+        ? `${process.env.SEDA_EXPLORER_URL}/data-requests/${drId}/${drBlockHeight ?? ''}`
+        : 'Configure env.SEDA_EXPLORER_URL to generate a link to your DR';
 
     console.table({
-        ...result,
-        blockTimestamp: result.blockTimestamp ? result.blockTimestamp.toISOString() : '',
+        drId,
+        drBlockHeight: drBlockHeight?.toString?.() ?? drBlockHeight,
         explorerLink
     });
 
-    if (result.exitCode === 0) {
-        const raw = result.result?.startsWith('0x') ? result.result : `0x${result.result}`;
-        try {
-            const values = decodeInt256Array(raw, 4);
-            const scale = 1_000_000n;
-            const fairPrice = formatScaled(values[0], scale);
-            const confidence = formatScaled(values[1], scale);
-            const maxSize = formatScaled(values[2], scale);
-            const flags = values[3].toString();
-            console.log(`fair_price (1e6): ${fairPrice}`);
-            console.log(`confidence_score (1e6): ${confidence}`);
-            console.log(`max_safe_execution_size (1e6): ${maxSize}`);
-            console.log(`flags: ${flags}`);
-        } catch (error) {
-            console.warn('Could not decode result as int256[4]:', error);
-        }
-    }
+    console.log('DR posted. Use `bun run await-dr` to wait for the result.');
 }
 
 main();
-
-function decodeInt256Array(hex: string, expected: number): bigint[] {
-    const cleaned = hex.startsWith('0x') ? hex.slice(2) : hex;
-    if (cleaned.length % 64 !== 0) {
-        throw new Error(`Invalid ABI length: ${cleaned.length}`);
-    }
-    const chunks = cleaned.match(/.{1,64}/g) ?? [];
-    if (chunks.length < 2) {
-        throw new Error('Invalid ABI payload');
-    }
-    const offset = parseInt(chunks[0], 16) / 32;
-    const length = parseInt(chunks[offset], 16);
-    if (length !== expected) {
-        throw new Error(`Expected ${expected} values, got ${length}`);
-    }
-    const values: bigint[] = [];
-    for (let i = 0; i < length; i += 1) {
-        const chunk = chunks[offset + 1 + i];
-        values.push(decodeInt256(chunk));
-    }
-    return values;
-}
-
-function decodeInt256(chunk: string): bigint {
-    const value = BigInt(`0x${chunk}`);
-    const signBit = 1n << 255n;
-    const max = 1n << 256n;
-    return value & signBit ? value - max : value;
-}
-
-function formatScaled(value: bigint, scale: bigint): string {
-    const negative = value < 0n;
-    const abs = negative ? -value : value;
-    const integer = abs / scale;
-    const fraction = (abs % scale).toString().padStart(6, '0');
-    return `${negative ? '-' : ''}${integer.toString()}.${fraction}`;
-}
