@@ -42,16 +42,32 @@ It converts oracle access into an explicit economic transaction settled on-chain
 
 This eliminates reliance on protocol-level oracle subsidies and aligns incentives from day one.
 
-## 2. The Problem: From Price Feeds to Execution-Grade Metrics
+## 2. Why this is not Chainlink
 
-Traditional oracles deliver spot prices or simple TWAPs. These signals lack context, are vulnerable to manipulation, and are insufficient for autonomous execution - especially in environments exposed to flash loans and shallow liquidity.
+x402-oracle does not compete with traditional price-feed oracles. It solves a different class of problems.
+Chainlink-style oracles
 
-Autonomous agents and DeFi protocols do not need raw prices.
-They need decisions.
+** Push predefined feeds
+** Optimized for broad reuse
+** Subscription- or subsidy-based economics
+** Limited expressiveness (price, FX, basic metrics)
 
-This MVP is intentionally designed as a reference implementation: it demonstrates the potential and flexibility of a programmable oracle framework, not a one-size-fits-all feed.
+x402-oracle
 
-At its core, x402-oracle is an Oracle-as-a-Service, where each agent, vault, or protocol can define its own execution logic, risk model, and output schema, tailored to its specific strategy and constraints.
+** Executes custom oracle programs per request
+** Optimized for decision-grade intelligence
+** Pay-per-execution via x402 (no subscriptions)
+** Arbitrary deterministic logic (risk, safety, bounds, signals)
+
+Key distinction:
+Chainlink answers “what is the price?”
+x402-oracle answers “is it safe to execute this action right now, and how?”
+
+This makes x402-oracle suitable for:
+LP tokens as collateral
+Automated DeFi agents
+Dynamic risk management
+Capital-efficient protocols
 
 ### Customizable, Programmable Fair Value
 
@@ -63,7 +79,34 @@ Instead of publishing a universal price, the oracle computes a context-aware fai
 
 This allows different consumers to ask fundamentally different questions of the same underlying data.
 
-### Actionable Pool Health Metrics (Execution-Ready)
+## 3. Oracle-as-a-Service: Seamless Delivery and Composability
+
+```mermaid
+flowchart LR
+    A[Request on Cronos<br/>Agent / Protocol]
+    B[x402 Payment<br/>HTTP 402]
+    C[SEDA Oracle Program<br/>Decentralized Computation]
+    D[Relayer / Settlement Service]
+    E[Cronos Consumer Contract]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+```
+
+
+### HACKATON Example Oracle Program: WCRO–USDC Execution Safety
+
+This project is not merely an oracle feed.
+
+It is an enabling primitive for Agentic Finance on Cronos.
+
+By creating a marketplace for paid, verifiable, execution-grade DeFi intelligence, the system enables:
+
+- Sustainability - oracle revenue driven by real demand, not subsidies
+- Security - reduced systemic risk when accepting LP tokens as collateral
+- Autonomy - AI agents that operate safely and profitably, paying only for the intelligence required to move capital
 
 Rather than returning a single scalar, the oracle emits a compact, multidimensional payload explicitly designed for execution:
 
@@ -90,45 +133,6 @@ From data feeds to decision interfaces, this structure allows smart contracts an
 - Should execution be delayed, reduced, or aborted?
 
 This MVP showcases one concrete configuration, but the architecture is designed to support many bespoke oracle programs, each serving a different agent, vault, or protocol with execution-grade intelligence.
-
-## 3. Oracle-as-a-Service: Seamless Delivery and Composability
-
-```mermaid
-flowchart LR
-    A[Request on Cronos<br/>Agent / Protocol]
-    B[x402 Payment<br/>HTTP 402]
-    C[SEDA Oracle Program<br/>Decentralized Computation]
-    D[Relayer / Settlement Service]
-    E[Cronos Consumer Contract]
-
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-```
-
-## 4. Strategic Vision: Enabling Agentic Finance on Cronos
-
-This project is not merely an oracle feed.
-
-It is an enabling primitive for Agentic Finance on Cronos.
-
-By creating a marketplace for paid, verifiable, execution-grade DeFi intelligence, the system enables:
-
-- Sustainability - oracle revenue driven by real demand, not subsidies
-- Security - reduced systemic risk when accepting LP tokens as collateral
-- Autonomy - AI agents that operate safely and profitably, paying only for the intelligence required to move capital
-
-## Output Format (Canonical)
-
-On-chain output is a fixed `int256[4]` array with **1e6 scale**:
-
-```
-values[0] = fair_price (1e6)
-values[1] = confidence_score (1e6)
-values[2] = max_safe_execution_size (1e6)
-values[3] = flags (bitmask)
-```
 
 ## Output Formulas (WCRO-USDC)
 
@@ -201,12 +205,9 @@ slippage_1e6 < 10_000   // 1%
 
 ## Validation Checklist (Testnet)
 
-- Oracle Program ID (SEDA Core): `0x61d26d8e7693b39a4296e1ecba45595bc7cdbbeecb1043c7034c8f99498f1504`
-- Data Request ID (SEDA): `ba65b51684c798468ef9282cf245d96d45942beeec73a0b73c5c607ca768ed15`
 - SEDA Explorer: `https://testnet.explorer.seda.xyz/data-requests/ba65b51684c798468ef9282cf245d96d45942beeec73a0b73c5c607ca768ed15/7299903`
-- Cronos Consumer Contract: `0xe0F946B25e4cce13FeF052cc76573fA8dF74D9D9`
-- Relayer Transaction (Cronos testnet): `0x383aaf3d2ac7b36a4702fd62cd63db74405713fe9991a501b6b934c965748576`
-- Cronos Explorer: `https://testnet.cronoscan.com/tx/0x383aaf3d2ac7b36a4702fd62cd63db74405713fe9991a501b6b934c965748576`
+- Relayer Transaction (Cronos testnet): 
+https://explorer.cronos.org/testnet/address/0xe0f946b25e4cce13fef052cc76573fa8df74d9d9
 
 Observed values (1e6 scale):
 
